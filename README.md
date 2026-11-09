@@ -13,11 +13,11 @@ A free AI use-case intake for small and mid-size companies. Describe an AI use c
 
 It runs entirely in the browser. Nothing entered leaves the user's device.
 
-> General information only, not legal advice. Legal status checked November 2026.
+> This is not legal advice. 
 
 ## The problem
 
-Larger companies review new AI use cases through a GenAI intake process: legal, privacy, security and risk teams decide whether a use case is approved, approved with conditions, or sent back for more evidence. Small and mid-size companies adopt AI tools just as fast but have no budget for governance software or a review board, so most use cases go live without anyone checking which rules apply or which controls are missing. This tool reproduces the structure of that intake process for them.
+Companies review new AI use cases through an automated GenAI intake process orchestrated on third party platforms: legal, privacy, security and risk teams decide whether a use case is approved, approved with conditions, or sent back for more evidence. Small and mid-size companies adopt AI tools just as fast but have no budget for governance software or a review board, so most use cases go live without anyone checking which rules apply or which controls are missing. This tool reproduces the structure of that intake process for them to get an initial understanding 
 
 ## Frameworks (switch each on or off)
 
@@ -28,11 +28,11 @@ Larger companies review new AI use cases through a GenAI intake process: legal, 
 | Colorado SB 26-189 | Replaces the Colorado AI Act. From 1 Jan 2027: notice, adverse-decision explanation within 30 days, human review, 3-year records. AG rules pending |
 | NYC Local Law 144 | Hiring or promotion tools used on NYC candidates or employees: annual independent bias audit, public summary, 10-business-day notice |
 | NIST AI RMF 1.0 + Generative AI Profile (AI 600-1) | Voluntary. Govern, Map, Measure, Manage, plus the relevant GenAI risk categories |
-| ISO/IEC 42001:2023 | Voluntary. Clause and Annex A references only, since the standard text is copyrighted |
+| ISO/IEC 4200 1:2023 | Voluntary. Clause and Annex A references only, since the standard text is copyrighted |
 
 ## Design decisions
 
-- **Rules, not model judgment.** Applicability, risk tier and decision come from explicit rules in [`src/engine.js`](src/engine.js). The same answers always give the same result, every finding cites its source, and the logic can be tested. An LLM is planned only for the next step: mapping a company's own policies to the generated controls.
+- **Rules, not model judgment.** Applicability, risk tier (EU AI Act risk tiering language) and decision come from explicit rules in [`src/engine.js`](src/engine.js). The same answers always give the same result, every finding cites its source, and the logic can be tested. An LLM is planned only for the next step: mapping a company's own policies to the generated controls.
 - **"Not sure yet" is a valid answer.** It sends the intake back with a list of open questions, as a real intake forum would, instead of guessing.
 - **Only relevant questions appear.** Around 30 questions in total; follow-ups (bias testing, appeal process, NYC hiring tools, vendor training terms) appear only when earlier answers make them relevant.
 - **Controls in the NIST SP 800-53 format.** Each control has an ID, a control statement with `[Assignment: organization-defined …]` parameters, a discussion and related controls, and is based on a named 800-53 control. Where 800-53 has no equivalent (human oversight, AI transparency, bias audits) the control is marked as an AI-specific extension. NIST's AI overlays for 800-53 are still in draft.
