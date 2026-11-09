@@ -1,13 +1,38 @@
-// Framework catalogue. Applicability logic lives in engine.js.
+// Catalogue of regulations and voluntary standards. Applicability rules live in engine.js (RULES).
+// To add an entry: add it here, add a rule in engine.js, and map controls in controls.js.
+// kind: "law" = binding regulation, checked automatically against the answers.
+//       "voluntary" = standard or framework, applied only when the user selects it.
+// geo: jurisdiction codes (see JURISDICTIONS) that bring a regulation into scope.
 // Status notes reflect public sources checked in November 2026. Verify before relying on them.
 
+export const JURISDICTIONS = [
+  { id: "eu", label: "European Union", group: "Europe" },
+  { id: "uk", label: "United Kingdom", group: "Europe" },
+  { id: "california", label: "California", group: "United States" },
+  { id: "colorado", label: "Colorado", group: "United States" },
+  { id: "illinois", label: "Illinois", group: "United States" },
+  { id: "nyc", label: "New York City", group: "United States" },
+  { id: "texas", label: "Texas", group: "United States" },
+  { id: "utah", label: "Utah", group: "United States" },
+  { id: "other_us", label: "Other US states", group: "United States" },
+  { id: "china", label: "China", group: "Asia-Pacific" },
+  { id: "japan", label: "Japan", group: "Asia-Pacific" },
+  { id: "south_korea", label: "South Korea", group: "Asia-Pacific" },
+  { id: "other", label: "Elsewhere", group: "Other" },
+];
+export const JURISDICTION_LABEL = Object.fromEntries(JURISDICTIONS.map((j) => [j.id, j.label]));
+
 export const FRAMEWORKS = [
+  // ---------- Regulations ----------
   {
     id: "eu_ai_act",
     name: "EU AI Act",
     short: "EU AI Act",
     kind: "law",
+    type: "AI regulation",
     jurisdiction: "European Union",
+    geo: ["eu"],
+    effective: "Phased, 2025–2027",
     citation: "Regulation (EU) 2024/1689, as amended by Regulation (EU) 2026/1744 (Digital Omnibus)",
     status:
       "Prohibitions and AI literacy apply since Feb 2025. Transparency duties (Art. 50) apply from 2 Aug 2026. Annex III high-risk obligations apply from 2 Dec 2027 after the Digital Omnibus delay.",
@@ -21,7 +46,10 @@ export const FRAMEWORKS = [
     name: "General Data Protection Regulation",
     short: "GDPR",
     kind: "law",
+    type: "Data protection regulation",
     jurisdiction: "European Union",
+    geo: ["eu"],
+    effective: "In force",
     citation: "Regulation (EU) 2016/679",
     status: "In force.",
     summary:
@@ -30,11 +58,30 @@ export const FRAMEWORKS = [
     defaultOn: true,
   },
   {
+    id: "uk_gdpr",
+    name: "UK GDPR and Data Protection Act 2018",
+    short: "UK GDPR",
+    kind: "law",
+    type: "Data protection regulation",
+    jurisdiction: "United Kingdom",
+    geo: ["uk"],
+    effective: "In force",
+    citation: "UK GDPR; Data Protection Act 2018, as amended by the Data (Use and Access) Act 2025",
+    status: "In force. The Data (Use and Access) Act 2025 relaxes some automated decision-making rules; its provisions are being commenced in stages.",
+    summary:
+      "UK data protection law for personal data of people in the UK: lawful basis, transparency, DPIAs and safeguards for significant automated decisions.",
+    url: "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/",
+    defaultOn: true,
+  },
+  {
     id: "colorado",
     name: "Colorado ADMT Law (SB 26-189)",
     short: "Colorado",
     kind: "law",
+    type: "Automated decision-making law",
     jurisdiction: "Colorado, US",
+    geo: ["colorado"],
+    effective: "From 1 Jan 2027",
     citation: "Colorado SB 26-189 (repeals and replaces SB 24-205, the Colorado AI Act)",
     status:
       "Signed 14 May 2026. Takes effect 1 Jan 2027. The Attorney General is still writing implementing rules, so details may change.",
@@ -44,11 +91,64 @@ export const FRAMEWORKS = [
     defaultOn: true,
   },
   {
+    id: "ca_admt",
+    name: "CCPA Automated Decision-Making Regulations",
+    short: "California ADMT",
+    kind: "law",
+    type: "Privacy regulation (automated decisions)",
+    jurisdiction: "California, US",
+    geo: ["california"],
+    effective: "ADMT from 1 Jan 2027",
+    citation: "Cal. Code Regs. tit. 11, §§ 7200 ff. (CPPA regulations under the CCPA)",
+    status:
+      "Approved 2025. ADMT requirements apply from 1 Jan 2027; risk assessments for covered processing from 2026, with compliance documented by 31 Dec 2027. Applies only to businesses that meet CCPA thresholds.",
+    summary:
+      "Pre-use notice, opt-out and access rights when automated decision-making technology is used for significant decisions about California consumers, plus risk assessments.",
+    url: "https://cppa.ca.gov/regulations/",
+    defaultOn: true,
+  },
+  {
+    id: "ca_ai_transparency",
+    name: "California AI Transparency Act (SB 942)",
+    short: "California SB 942",
+    kind: "law",
+    type: "AI content transparency law",
+    jurisdiction: "California, US",
+    geo: ["california"],
+    effective: "From 2 Aug 2026",
+    citation: "Cal. Bus. & Prof. Code §§ 22757 ff., as amended by AB 853 (2025)",
+    status:
+      "Operative 2 Aug 2026 after AB 853 delayed it. Applies to providers of public generative AI systems with over 1 million monthly users in California. AB 853 adds duties for large platforms (2027) and capture devices (2028).",
+    summary:
+      "Large generative AI providers must offer a free AI-detection tool and embed manifest and latent disclosures in AI-generated image, video and audio.",
+    url: "https://leginfo.legislature.ca.gov/",
+    defaultOn: true,
+  },
+  {
+    id: "illinois_hra",
+    name: "Illinois Human Rights Act, AI in Employment (HB 3773)",
+    short: "Illinois HB 3773",
+    kind: "law",
+    type: "Employment discrimination law",
+    jurisdiction: "Illinois, US",
+    geo: ["illinois"],
+    effective: "In force since 1 Jan 2026",
+    citation: "775 ILCS 5/2-102(L), added by Public Act 103-0804 (HB 3773); draft IDHR rules (Subpart J)",
+    status: "In force since 1 Jan 2026. The Department of Human Rights has published draft notice rules that may still change.",
+    summary:
+      "Employers may not use AI that has a discriminatory effect in hiring, promotion, discipline or other employment decisions, may not use zip codes as a proxy for protected classes, and must give notice when AI is used.",
+    url: "https://www.ilga.gov/legislation/publicacts/fulltext.asp?Name=103-0804",
+    defaultOn: true,
+  },
+  {
     id: "nyc_ll144",
     name: "NYC Local Law 144 (AEDT)",
     short: "NYC LL144",
     kind: "law",
+    type: "Hiring tool audit law",
     jurisdiction: "New York City, US",
+    geo: ["nyc"],
+    effective: "In force since Jul 2023",
     citation: "NYC Admin. Code §§ 20-870 to 20-874; 6 RCNY § 5-300",
     status: "Enforced since 5 July 2023.",
     summary:
@@ -57,13 +157,100 @@ export const FRAMEWORKS = [
     defaultOn: true,
   },
   {
+    id: "texas_traiga",
+    name: "Texas Responsible AI Governance Act (TRAIGA)",
+    short: "Texas TRAIGA",
+    kind: "law",
+    type: "AI regulation",
+    jurisdiction: "Texas, US",
+    geo: ["texas"],
+    effective: "In force since 1 Jan 2026",
+    citation: "Texas HB 149 (89th Legislature, 2025)",
+    status:
+      "In force since 1 Jan 2026. Enforced only by the Attorney General, with a 60-day cure period. Following a recognised framework such as the NIST AI RMF is a defence.",
+    summary:
+      "Prohibits developing or deploying AI with intent to discriminate, manipulate people into harm, or produce unlawful sexual content. Health care providers and government agencies must disclose AI use.",
+    url: "https://capitol.texas.gov/BillLookup/History.aspx?LegSess=89R&Bill=HB149",
+    defaultOn: true,
+  },
+  {
+    id: "utah_ai",
+    name: "Utah AI Consumer Protection Disclosure Law",
+    short: "Utah",
+    kind: "law",
+    type: "AI disclosure law",
+    jurisdiction: "Utah, US",
+    geo: ["utah"],
+    effective: "In force",
+    citation: "Utah Code ch. 13-77 (SB 226, 2025); AI Policy Act, Utah Code ch. 13-72",
+    status:
+      "In force since May 2025. Penalties up to $2,500 per violation, enforced by the Division of Consumer Protection. The separate AI Policy Act (learning lab) is set to repeal on 1 Jul 2027.",
+    summary:
+      "Businesses using generative AI with consumers must disclose it when asked. Licensed professions must disclose it proactively in high-risk interactions such as health, financial or biometric data and personal advice.",
+    url: "https://le.utah.gov/",
+    defaultOn: true,
+  },
+  {
+    id: "korea_ai_basic",
+    name: "South Korea AI Basic Act",
+    short: "Korea AI Basic Act",
+    kind: "law",
+    type: "AI regulation",
+    jurisdiction: "South Korea",
+    geo: ["south_korea"],
+    effective: "In force since 22 Jan 2026",
+    citation: "Framework Act on the Development of Artificial Intelligence and Establishment of Trust (2025)",
+    status:
+      "In force since 22 Jan 2026 and applies to AI that affects users or the market in Korea. Fines up to KRW 30 million; the government has announced a grace period of at least one year before fines.",
+    summary:
+      "Advance notice when products use generative or high-impact AI, labelling of generative AI output, and risk management, explanation and human oversight for high-impact AI.",
+    url: "https://www.law.go.kr/",
+    defaultOn: true,
+  },
+  {
+    id: "japan_ai_promotion",
+    name: "Japan AI Promotion Act",
+    short: "Japan AI Act",
+    kind: "law",
+    type: "AI policy law",
+    jurisdiction: "Japan",
+    geo: ["japan"],
+    effective: "In force since 2025",
+    citation: "Act on the Promotion of Research, Development and Utilization of AI-Related Technologies (Act No. 53 of 2025)",
+    status: "In force since 2025. No penalties. Businesses must cooperate with government measures; the AI Business Guidelines set out voluntary practices.",
+    summary:
+      "A promotion law rather than a rulebook: it asks businesses to cooperate with government AI policy and lets the government investigate and publish guidance on harmful uses.",
+    url: "https://www8.cao.go.jp/cstp/ai/index.html",
+    defaultOn: true,
+  },
+  {
+    id: "china_genai",
+    name: "China AI-Generated Content Labelling Measures",
+    short: "China labelling",
+    kind: "law",
+    type: "AI content labelling regulation",
+    jurisdiction: "China",
+    geo: ["china"],
+    effective: "In force since 1 Sep 2025",
+    citation: "Measures for Labelling AI-Generated Synthetic Content (2025) and GB 45438-2025; Interim Measures for Generative AI Services (2023)",
+    status: "In force since 1 Sep 2025. Public-facing generative AI services in China also fall under the 2023 Interim Measures, including security assessment and filing.",
+    summary:
+      "Providers of AI generation services must add visible labels and metadata labels to AI-generated text, images, audio and video; users must declare AI content they publish.",
+    url: "https://www.cac.gov.cn/",
+    defaultOn: true,
+  },
+
+  // ---------- Voluntary standards and frameworks ----------
+  {
     id: "nist_ai_rmf",
     name: "NIST AI Risk Management Framework",
     short: "NIST AI RMF",
     kind: "voluntary",
+    type: "AI risk management framework",
     jurisdiction: "United States (NIST)",
+    effective: "Voluntary",
     citation: "NIST AI 100-1 (AI RMF 1.0) and NIST AI 600-1 (Generative AI Profile)",
-    status: "Voluntary framework.",
+    status: "Voluntary framework. Recognised as a defence under Texas TRAIGA.",
     summary:
       "Govern, Map, Measure, Manage: a voluntary structure for identifying and managing AI risk, with a profile for generative AI risks.",
     url: "https://www.nist.gov/itl/ai-risk-management-framework",
@@ -74,7 +261,10 @@ export const FRAMEWORKS = [
     name: "ISO/IEC 42001:2023",
     short: "ISO 42001",
     kind: "voluntary",
-    jurisdiction: "International, certifiable",
+    type: "AI management system",
+    jurisdiction: "International",
+    certifiable: true,
+    effective: "Certifiable",
     citation: "ISO/IEC 42001:2023 AI management system",
     status: "Voluntary, certifiable. References only; the standard text is copyrighted.",
     summary:
@@ -82,6 +272,70 @@ export const FRAMEWORKS = [
     url: "https://www.iso.org/standard/81230.html",
     defaultOn: false,
   },
+  {
+    id: "iso_42005",
+    name: "ISO/IEC 42005:2025",
+    short: "ISO 42005",
+    kind: "voluntary",
+    type: "AI impact assessment guidance",
+    jurisdiction: "International",
+    effective: "Guidance",
+    citation: "ISO/IEC 42005:2025 AI system impact assessment",
+    status: "Guidance standard, not certifiable on its own. Supports the impact assessment required by ISO/IEC 42001.",
+    summary:
+      "How to assess the impact of an AI system on people, groups and society across its life cycle, and how to document and review that assessment.",
+    url: "https://www.iso.org/standard/42005",
+    defaultOn: false,
+  },
+  {
+    id: "iso_23894",
+    name: "ISO/IEC 23894:2023",
+    short: "ISO 23894",
+    kind: "voluntary",
+    type: "AI risk management guidance",
+    jurisdiction: "International",
+    effective: "Guidance",
+    citation: "ISO/IEC 23894:2023 Guidance on AI risk management",
+    status: "Guidance standard based on ISO 31000, not certifiable on its own.",
+    summary:
+      "Applies the ISO 31000 risk management process to AI: identifying, analysing, treating and monitoring AI-specific risks.",
+    url: "https://www.iso.org/standard/77304.html",
+    defaultOn: false,
+  },
+  {
+    id: "iso_27001",
+    name: "ISO/IEC 27001:2022",
+    short: "ISO 27001",
+    kind: "voluntary",
+    type: "Information security management system",
+    jurisdiction: "International",
+    certifiable: true,
+    effective: "Certifiable",
+    citation: "ISO/IEC 27001:2022 and Annex A controls",
+    status: "Voluntary, certifiable. References only; the standard text is copyrighted.",
+    summary:
+      "The most widely used security certification. AI systems fall under the same access, logging, supplier and change controls as other systems.",
+    url: "https://www.iso.org/standard/27001",
+    defaultOn: false,
+  },
+  {
+    id: "iso_27701",
+    name: "ISO/IEC 27701:2025",
+    short: "ISO 27701",
+    kind: "voluntary",
+    type: "Privacy information management system",
+    jurisdiction: "International",
+    certifiable: true,
+    effective: "Certifiable",
+    citation: "ISO/IEC 27701:2025 Privacy information management",
+    status: "Voluntary, certifiable as a standalone standard since the 2025 edition. References only.",
+    summary:
+      "Privacy management requirements for controllers and processors of personal data: purpose limitation, records, notices, data subject rights and processor management.",
+    url: "https://www.iso.org/standard/27701",
+    defaultOn: false,
+  },
 ];
 
 export const FRAMEWORK_BY_ID = Object.fromEntries(FRAMEWORKS.map((f) => [f.id, f]));
+export const REGULATIONS = FRAMEWORKS.filter((f) => f.kind === "law");
+export const STANDARDS = FRAMEWORKS.filter((f) => f.kind === "voluntary");

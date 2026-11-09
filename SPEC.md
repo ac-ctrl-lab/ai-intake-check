@@ -1,4 +1,4 @@
-# AI Intake Check — v1 spec (proof of concept)
+# MayAI — v1 spec (proof of concept)
 
 ## Problem
 Small and mid-size companies adopt AI tools faster than they can review them. Large companies run a GenAI intake process: a cross-functional review (legal, privacy, security, risk) that approves, conditions or rejects each AI use case. Smaller companies have no budget for governance software or a review board, so most AI use cases go live without anyone checking which laws apply or which controls are missing.
@@ -25,7 +25,7 @@ Operations, IT, legal or founder-level staff at companies of roughly 10–750 pe
 
 ## Design principles
 - **Deterministic rules, not model judgment.** Same answers, same result. Every finding cites its source. This makes the tool testable and explainable.
-- **Runs entirely in the browser.** No backend; nothing entered leaves the user's device. Hosted on GitHub Pages.
+- **Static site.** No server-side application code. Hosted on GitHub Pages.
 - **"Unsure" is a valid answer.** It produces "Return for more information" with the list of open questions, which mirrors how a real intake forum works.
 - **Not legal advice.** Shown on every screen and in every export.
 

@@ -409,4 +409,25 @@ export const CONTROLS = [
   },
 ];
 
+// Mappings for regulations and standards added in November 2026. Merged into each control's `map`.
+const EXTRA_MAP = {
+  "AI-PM-5": { iso_27001: ["A.5.9 Inventory of assets"], korea_ai_basic: ["Documentation of trust and safety measures"] },
+  "AI-RA-3": { iso_23894: ["Clause 6.4 Risk assessment"], iso_27001: ["Clause 6.1.2 Risk assessment"], ca_admt: ["Risk assessment"], korea_ai_basic: ["High-impact AI risk management"] },
+  "AI-RA-8": { iso_42005: ["AI system impact assessment"], uk_gdpr: ["Art. 35 DPIA"], ca_admt: ["Risk assessment"], iso_27701: ["Privacy impact assessment"] },
+  "AI-AC-6": { iso_27001: ["A.5.15 Access control", "A.8.2 Privileged access"] },
+  "AI-AU-12": { iso_27001: ["A.8.15 Logging"] },
+  "AI-FA-1": { illinois_hra: ["No discriminatory effect; no zip-code proxies"], texas_traiga: ["No intent to discriminate; internal testing defence"] },
+  "AI-HO-1": { korea_ai_basic: ["Human oversight for high-impact AI"], uk_gdpr: ["Human intervention (Art. 22C)"] },
+  "AI-TR-1": { utah_ai: ["Disclosure of generative AI"], korea_ai_basic: ["Advance notice of AI use"], texas_traiga: ["Health care disclosure"] },
+  "AI-TR-2": { ca_ai_transparency: ["Latent and manifest disclosures"], china_genai: ["Explicit and implicit labels"], korea_ai_basic: ["Labelling of generative output"] },
+  "AI-AD-1": { ca_admt: ["Pre-use notice, opt-out and access"], illinois_hra: ["Notice of AI use"], uk_gdpr: ["Arts. 22A–22D safeguards"], korea_ai_basic: ["Explanation of outcomes"] },
+  "AI-PT-5": { uk_gdpr: ["Arts. 13–14"], iso_27701: ["Notices to individuals"], ca_admt: ["Pre-use notice"] },
+  "AI-PT-7": { uk_gdpr: ["Art. 9 special category data"] },
+  "AI-SI-12": { uk_gdpr: ["Art. 5(1)(e) storage limitation"], iso_27701: ["Retention and disposal"] },
+  "AI-SA-9": { iso_27001: ["A.5.19–5.23 Supplier relationships"], uk_gdpr: ["Art. 28 processors"], iso_27701: ["Processor management"] },
+  "AI-CA-7": { iso_23894: ["Monitoring and review"] },
+  "AI-IR-4": { iso_27001: ["A.5.24–5.28 Incident management"] },
+};
+for (const c of CONTROLS) Object.assign(c.map, EXTRA_MAP[c.id] || {});
+
 export const CONTROL_BY_ID = Object.fromEntries(CONTROLS.map((c) => [c.id, c]));

@@ -3,7 +3,8 @@
 import { assess, FRAMEWORKS } from "../src/engine.js";
 import { EXAMPLES } from "../src/data/examples.js";
 
-const enabled = FRAMEWORKS.map((f) => f.id).filter((id) => id !== "iso_42001");
+// Regulations are always checked; of the voluntary standards, only the defaults are switched on.
+const enabled = FRAMEWORKS.filter((f) => f.defaultOn).map((f) => f.id);
 let pass = 0;
 const rows = [];
 for (const ex of EXAMPLES) {

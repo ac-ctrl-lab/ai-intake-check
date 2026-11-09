@@ -1,4 +1,5 @@
-import { assess, applicability, riskTier, openQuestions, progress, computeSignals, FRAMEWORKS, FRAMEWORK_BY_ID, UNSURE } from "./engine.js";
+import { assess, applicability, riskTier, openQuestions, progress, computeSignals, jurisdictionMap, normType, FRAMEWORKS, FRAMEWORK_BY_ID, UNSURE } from "./engine.js";
+import { REGULATIONS, STANDARDS, JURISDICTIONS, JURISDICTION_LABEL } from "./data/frameworks.js";
 import { SECTIONS, isVisible } from "./data/questions.js";
 import { EXAMPLES } from "./data/examples.js";
 import { CONTROLS } from "./data/controls.js";
@@ -19,7 +20,7 @@ let state = load() || defaultState();
 let animate = true;
 
 function load() {
-  try { const s = JSON.parse(localStorage.getItem(STORE)); return s && s.answers ? { ...defaultState(), ...s, view: "home" } : null; } catch { return null; }
+  try { const s = JSON.parse(localStorage.getItem(STORE)); if (!s || !s.answers) return null; if (s.answers.uc_type) s.answers.uc_type = normType(s.answers.uc_type); return { ...defaultState(), ...s, view: "home" }; } catch { return null; }
 }
 function save() {
   try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* storage unavailable */ }
@@ -39,62 +40,73 @@ function go(view, extra = {}) {
 
 // ---------- Views ----------
 function renderSteps() {
-  const steps = [["setup", "1 Frameworks"], ["intake", "2 Intake"], ["result", "3 Result"]];
+  const steps = [["setup", "Frameworks"], ["intake", "Intake"], ["result", "Result"]];
   stepsEl.innerHTML = state.view === "home" ? "" : steps.map(([v, l]) => `<span class="${state.view === v ? "on" : ""}">${l}</span>`).join("");
 }
 
 // ---------- Home: quick check ----------
+const REGIONS = [["eu", "European Union"], ["uk", "United Kingdom"], ["us", "United States"], ["china", "China"], ["japan", "Japan"], ["south_korea", "South Korea"], ["other", "Elsewhere"]];
+const US_STATES = [["california", "California"], ["colorado", "Colorado"], ["illinois", "Illinois"], ["nyc", "New York City"], ["texas", "Texas"], ["utah", "Utah"], ["other_us", "Other states"]];
 const QC = [
-  { id: "geo", label: "Where are the people affected?", multi: true, opts: [["eu", "European Union"], ["colorado", "Colorado"], ["nyc", "New York City"], ["other_us", "Elsewhere in the US"]] },
-  { id: "type", label: "What kind of AI is it?", opts: [["genai_assistant", "Generative assistant"], ["predictive", "Predictive model"], ["agent", "Agent"], ["vision_biometric", "Vision or biometric"]] },
-  { id: "users", label: "Who uses it or is affected?", multi: true, opts: [["employees", "Employees"], ["customers", "Customers"], ["public", "The public"], ["applicants", "Job applicants"]] },
-  { id: "domain", label: "Does it shape decisions about people?", opts: [["none", "No"], ["employment", "Hiring"], ["credit_lending", "Lending"], ["insurance", "Insurance"], ["healthcare", "Health care"]] },
+  { id: "regions", label: "Where are the people affected?", multi: true, opts: REGIONS },
+  { id: "states", label: "Which US states or cities?", multi: true, opts: US_STATES, showIf: (q) => q.regions.includes("us") },
+  { id: "does", label: "What does the AI do?", hint: "Select all that apply", multi: true, opts: [["genai", "Generates content"], ["predictive", "Predicts or scores"], ["agent", "Takes actions"], ["biometric", "Analyses faces or voices"]] },
+  { id: "who", label: "Who is affected?", opts: [["internal", "Internal: employees"], ["external", "External: customers or the public"]] },
+  { id: "industry", label: "Which industry?", opts: [["financial", "Financial services"], ["insurance", "Insurance"], ["healthcare", "Health care"], ["hr", "HR and recruiting"], ["education", "Education"], ["public_sector", "Public sector"], ["retail", "Retail"], ["technology", "Technology"], ["other", "Other"]] },
+  { id: "decides", label: "Does it influence decisions about people?", hint: "For example hiring, lending, insurance or access to services", opts: [["yes", "Yes"], ["no", "No"]] },
 ];
-let quick = { geo: ["eu"], type: "genai_assistant", users: ["customers"], domain: "none" };
+const INDUSTRY_DOMAIN = { financial: "credit_lending", insurance: "insurance", healthcare: "healthcare", hr: "employment", education: "education", public_sector: "essential_services" };
+let quick = { regions: ["eu", "us"], states: ["california"], does: ["genai"], who: "external", industry: "technology", decides: "no" };
 
 function quickAnswers() {
   const q = quick;
-  const decides = q.domain && q.domain !== "none";
-  const people = decides || (q.users || []).some((u) => u !== "employees");
+  const geo = q.regions.filter((r) => r !== "us");
+  if (q.regions.includes("us")) geo.push(...(q.states.length ? q.states : ["other_us"]));
+  const decides = q.decides === "yes";
+  const domain = decides && INDUSTRY_DOMAIN[q.industry] ? [INDUSTRY_DOMAIN[q.industry]] : ["none"];
+  const users = q.who === "internal" ? ["employees"] : q.industry === "hr" ? ["applicants", "public"] : ["customers", "public"];
   return {
-    uc_type: q.type, uc_users: q.users, geo: q.geo,
-    domain: q.domain ? [q.domain] : undefined,
-    decision_role: decides ? "substantially_assists" : undefined,
-    aedt: q.domain === "employment" ? "yes" : decides ? "no" : undefined,
+    uc_type: q.does, uc_users: users, geo, industry: q.industry, domain,
+    decision_role: domain[0] !== "none" ? "substantially_assists" : undefined,
+    aedt: domain[0] === "employment" ? "yes" : undefined,
     prohibited: ["none"],
-    personal_data: people ? "yes" : undefined,
+    personal_data: q.who === "external" || decides ? "yes" : undefined,
   };
 }
+
+const STATUS_LABEL = { in_scope: "Applies", possible: "May apply", out_of_scope: "Does not apply", off: "Off", pending: "Not yet known" };
 
 function viewQuickResult() {
   const a = quickAnswers();
   const enabled = FRAMEWORKS.filter((f) => f.defaultOn).map((f) => f.id);
-  const t = riskTier(a);
-  const ap = applicability(a, enabled);
   const r = assess(a, enabled);
-  const applies = FRAMEWORKS.filter((f) => ap[f.id].status === "in_scope");
-  return `
+  const t = r.tier;
+  const regs = REGULATIONS.filter((f) => ["in_scope", "possible"].includes(r.applicability[f.id].status));
+  const pend = REGULATIONS.filter((f) => r.applicability[f.id].status === "pending");
+  const generalDecision = quick.decides === "yes" && !INDUSTRY_DOMAIN[quick.industry];
+  return `<div class="qc-sticky">
     <div class="qc-tier">
-      <span class="qc-label">Risk tier</span>
-      <b class="tier-word tw-${t.tier}" data-anim>${t.label}</b>
+      <span class="qc-label">Preliminary risk tier</span>
+      <b class="tier-word tw-${t.tier}">${t.label}</b>
       <div class="meter lv${TIER_LEVEL[t.tier]}" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <p class="qc-why">${esc(t.why[0] || "")}</p>
+      <p class="qc-why">${esc(generalDecision ? "Decisions about people: the full intake checks whether they count as high-risk" : t.why[0] || "")}</p>
     </div>
     <div class="qc-fw">
-      <span class="qc-label">Frameworks</span>
-      ${FRAMEWORKS.map((f) => { const s = ap[f.id].status; return `<div class="qc-fwrow ${s === "in_scope" ? "on" : s === "possible" ? "maybe" : ""}"><span class="st st-${s}"></span>${esc(f.short)}<em>${{ in_scope: "Applies", possible: "May apply", out_of_scope: "No", off: "Off", pending: "—" }[s]}</em></div>`; }).join("")}
+      <span class="qc-label">Regulations · ${regs.length} of ${REGULATIONS.length}</span>
+      ${regs.length ? regs.map((f) => { const s = r.applicability[f.id].status; return `<div class="qc-fwrow ${s === "in_scope" ? "on" : "maybe"}"><span class="st st-${s}"></span><span>${esc(f.short)}<small>${esc(f.jurisdiction.replace(", US", ""))}</small></span><em>${STATUS_LABEL[s]}</em></div>`; }).join("") : `<p class="qc-why">None of the covered regulations apply to these answers.</p>`}
+      ${pend.length ? `<p class="qc-why">${pend.length} more depend on details the full intake asks for.</p>` : ""}
     </div>
     <div class="qc-nums">
-      <div><b>${applies.length}</b><span>Frameworks Apply</span></div>
+      <div><b>${regs.length}</b><span>Regulations</span></div>
       <div><b>${r.controls.length}</b><span>Controls</span></div>
       <div><b>${Object.values(r.obligations).flat().length}</b><span>Obligations</span></div>
-    </div>`;
+    </div></div>`;
 }
 
 function viewQuick() {
-  return QC.map((g) => `
-    <div class="qc-group">
-      <span class="qc-q">${g.label}</span>
+  return QC.filter((g) => !g.showIf || g.showIf(quick)).map((g) => `
+    <div class="qc-group ${g.id === "states" ? "sub" : ""}">
+      <span class="qc-q">${g.label}${g.hint ? ` <small>${g.hint}</small>` : ""}</span>
       <div class="chips">${g.opts.map(([v, l]) => {
         const on = g.multi ? (quick[g.id] || []).includes(v) : quick[g.id] === v;
         return `<button class="chip ${on ? "on" : ""}" data-act="qc" data-g="${g.id}" data-v="${v}" aria-pressed="${on}">${l}</button>`;
@@ -102,58 +114,104 @@ function viewQuick() {
     </div>`).join("");
 }
 
+// Animated hero demo: an intake plays out, then MayAI stamps the verdict. Loops through examples.
+const DEMO_IDS = ["support_chatbot", "resume_screening", "emotion_monitoring", "meeting_notes"];
+const VERDICT = { approve: ["You may", "Standard controls"], conditional: ["You may", "With conditions"], reject: ["You may not", "Prohibited practice"], return: ["Not yet", "More information needed"] };
+const TYPE_LABEL = { genai: "Generates content", predictive: "Predicts or scores", agent: "Takes actions", biometric: "Analyses faces or voices" };
+
+function demoCard(i) {
+  const enabled = FRAMEWORKS.filter((f) => f.defaultOn).map((f) => f.id);
+  const e = EXAMPLES.find((x) => x.id === DEMO_IDS[i % DEMO_IDS.length]);
+  const a = e.answers;
+  const r = assess(a, enabled);
+  const regs = REGULATIONS.filter((f) => ["in_scope", "possible"].includes(r.applicability[f.id].status)).slice(0, 4);
+  const chips = [
+    ...(a.geo || []).filter((g) => g !== "other_us").map((g) => JURISDICTION_LABEL[g]),
+    ...normType(a.uc_type).map((t) => TYPE_LABEL[t]),
+    (a.uc_users || []).some((u) => u !== "employees") ? "External users" : "Employees only",
+  ];
+  const [v1, v2] = VERDICT[r.decision.code];
+  return `
+    <div class="dm-bar"><i></i><i></i><i></i><span>mayai.com/intake</span></div>
+    <div class="dm-body">
+      <span class="hc-label">Use case</span>
+      <div class="dm-title"><span class="dm-type" data-text="${esc(e.title)}"></span><span class="dm-caret"></span></div>
+      <div class="dm-chips">${chips.map((c, k) => `<span style="--d:${k}">${esc(c)}</span>`).join("")}</div>
+      <div class="dm-tier">
+        <div><span class="hc-label">Risk tier</span><b class="tw-${r.tier.tier}">${r.tier.label}</b></div>
+        <div class="meter lv${TIER_LEVEL[r.tier.tier]}" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <span class="hc-label">Regulations in scope</span>
+      <div class="dm-regs">${regs.length ? regs.map((f, k) => `<span style="--d:${k}">${esc(f.short)}</span>`).join("") : `<span style="--d:0" class="none">None, standards only</span>`}</div>
+    </div>
+    <div class="dm-stamp dm-${r.decision.code}"><b>${v1}</b><small>${v2}</small></div>
+    <div class="hc-dots">${DEMO_IDS.map((_, j) => `<i class="${j === i % DEMO_IDS.length ? "on" : ""}"></i>`).join("")}</div>`;
+}
+
+function playDemo(card, i, reduce) {
+  card.innerHTML = demoCard(i);
+  card.className = "hero-card demo";
+  const type = card.querySelector(".dm-type");
+  const text = type.dataset.text;
+  if (reduce) { type.textContent = text; card.classList.add("s1", "s2", "s3", "s4", "s5"); return; }
+  const t = heroTimers;
+  let n = 0;
+  const typeNext = () => { if (!card.isConnected) return; type.textContent = text.slice(0, ++n); if (n < text.length) t.push(setTimeout(typeNext, 45)); };
+  t.push(setTimeout(typeNext, 300));
+  const at = (ms, cls) => t.push(setTimeout(() => card.isConnected && card.classList.add(cls), ms));
+  const typed = 300 + text.length * 45;
+  at(typed + 200, "s1");   // chips
+  at(typed + 1100, "s2");  // tier
+  at(typed + 1900, "s3");  // regulations
+  at(typed + 2900, "s4");  // stamp
+  at(typed + 6200, "s5");  // fade out
+  t.push(setTimeout(() => card.isConnected && playDemo(card, i + 1, false), typed + 6800));
+}
+
 function viewHome() {
   const hasDraft = Object.keys(state.answers).length > 0;
-  const nQuestions = SECTIONS.flatMap((s) => s.questions).length;
   const enabled = FRAMEWORKS.filter((f) => f.defaultOn).map((f) => f.id);
+  const regions = [...new Set(REGULATIONS.map((f) => JURISDICTIONS.find((j) => j.id === f.geo[0])?.group))];
+  const nJur = new Set(REGULATIONS.flatMap((f) => f.geo)).size;
   return `
   <section class="hero">
-    <div>
-      <span class="tag">Free · private · no sign-up</span>
-      <h1>Can We Use This AI Tool? <em>Find Out Before You Launch.</em></h1>
-      <p class="lead">An AI use-case intake for small and mid-size companies. Answer questions on legal, privacy, security and oversight, and get the frameworks that apply, a risk tier, an intake decision and the controls to put in place.</p>
+    <div class="hero-copy">
+      <span class="tag">Free · No sign-up</span>
+      <h1>May I Use This AI Tool? <em>Ask Before You Launch.</em></h1>
+      <p class="lead">MayAI checks an AI use case against the regulations that apply where you operate. Answer a few targeted questions and get a risk tier, a clear decision and the controls to put in place.</p>
       <div class="row">
-        <button class="btn primary" data-act="new">Start a new intake</button>
+        <button class="btn primary" data-act="new">Start an intake</button>
         ${hasDraft ? `<button class="btn" data-act="resume">Resume draft</button>` : ""}
         <a class="btn ghost" href="#try">Try it in 20 seconds ↓</a>
       </div>
+      <ol class="hero-steps"><li>Describe the use case</li><li>Answer targeted questions</li><li>Get the decision and controls</li></ol>
     </div>
-    <div class="hero-art" aria-hidden="true">
-      <div class="flow">
-        <div><b>01</b><span>Choose the frameworks you care about</span></div>
-        <div><b>02</b><span>Answer about 30 questions; only the relevant ones appear</span></div>
-        <div><b>03</b><span>Watch scope and risk update as you go</span></div>
-        <div><b>04</b><span>Get a decision, obligations and NIST-format controls</span></div>
-      </div>
-      <div class="lenses">${["Legal", "Privacy", "Security", "Trust", "Governance"].map((l) => `<span class="tag">${l}</span>`).join("")}</div>
+    <div class="hero-card demo" id="hero-card" aria-label="Animated example of an intake result"></div>
+    <div class="hero-stats">
+      <div><b data-count="${REGULATIONS.length}">${REGULATIONS.length}</b><span>AI and data regulations</span></div>
+      <div><b data-count="${STANDARDS.length}">${STANDARDS.length}</b><span>Standards and frameworks</span></div>
+      <div><b data-count="${nJur}">${nJur}</b><span>Jurisdictions covered</span></div>
+      <div><b data-count="${CONTROLS.length}">${CONTROLS.length}</b><span>Controls in NIST format</span></div>
     </div>
   </section>
 
-  <section class="stats-strip reveal">
-    <div><b data-count="${FRAMEWORKS.length}">${FRAMEWORKS.length}</b><span>Laws and frameworks</span></div>
-    <div><b data-count="${nQuestions}">${nQuestions}</b><span>Questions at most</span></div>
-    <div><b data-count="${CONTROLS.length}">${CONTROLS.length}</b><span>NIST-format controls</span></div>
-    <div><b>0</b><span>Bytes sent to a server</span></div>
-  </section>
-
-  <div class="section-head reveal" id="try"><span class="eyebrow">01</span><h2>Try It in 20 Seconds</h2><span class="tiny">Four questions. The result is computed by the same rules as the full intake.</span></div>
+  <div class="section-head reveal" id="try"><h2>Try It in 20 Seconds</h2><span class="tiny">A few questions. The result uses the same rules as the full intake.</span></div>
   <section class="quick reveal">
     <div class="qc-inputs" id="qc-inputs">${viewQuick()}</div>
     <div class="qc-result" id="qc-result" aria-live="polite">${viewQuickResult()}</div>
-    <div class="qc-cta"><span class="tiny">This is a first read. The full intake adds privacy, security and oversight questions and gives you the decision.</span><button class="btn primary" data-act="qc-go">Continue with these answers →</button></div>
+    <div class="qc-cta"><span class="tiny">A first read only. The full intake adds privacy, security and oversight questions and gives you the decision.</span><button class="btn primary" data-act="qc-go">Continue with these answers →</button></div>
   </section>
 
-  <div class="section-head reveal" id="examples"><span class="eyebrow">02</span><h2>Example Use Cases</h2><span class="tiny">Hover for the outcome. Click to open the full result.</span></div>
+  <div class="section-head reveal" id="examples"><h2>Example Use Cases</h2><span class="tiny">Hover for the outcome. Click to open the full result.</span></div>
   <div class="filters reveal" role="group" aria-label="Filter by risk tier">
-    ${["all", "low", "medium", "high", "prohibited"].map((t) => `<button class="chip ${t === "all" ? "on" : ""}" data-act="filter" data-v="${t}">${t === "all" ? "All" : cap(t)}${t === "all" ? ` <i>${EXAMPLES.length}</i>` : ` <i>${EXAMPLES.filter((e) => e.expected.tier === t).length}</i>`}</button>`).join("")}
+    ${["all", "low", "medium", "high", "prohibited"].map((t) => `<button class="chip ${t === "all" ? "on" : ""}" data-act="filter" data-v="${t}">${t === "all" ? "All" : cap(t)} <i>${t === "all" ? EXAMPLES.length : EXAMPLES.filter((e) => e.expected.tier === t).length}</i></button>`).join("")}
   </div>
   <div class="examples reveal" id="example-grid">
-    ${EXAMPLES.map((e, i) => {
+    ${EXAMPLES.map((e) => {
       const r = assess(e.answers, enabled);
       const applies = FRAMEWORKS.filter((f) => r.applicability[f.id].status === "in_scope").map((f) => f.short);
       return `
       <button class="example spot" data-act="example" data-id="${e.id}" data-tier="${e.expected.tier}">
-        <span class="ex-num">${String(i + 1).padStart(2, "0")}</span>
         <h3>${esc(e.title)}</h3>
         <p>${esc(e.blurb)}</p>
         <span class="tag t-${e.expected.tier}">${cap(e.expected.tier)} risk</span>
@@ -166,46 +224,70 @@ function viewHome() {
     }).join("")}
   </div>
 
-  <div class="section-head reveal"><span class="eyebrow">03</span><h2>Frameworks Covered</h2><span class="tiny">Click a framework for its status and when it applies.</span></div>
-  <div class="fw-acc reveal">
-    ${FRAMEWORKS.map((f, i) => `
-      <details class="fw-row" name="fw">
-        <summary>
-          <span class="ex-num">${String(i + 1).padStart(2, "0")}</span>
-          <span class="fw-name">${esc(f.name)}</span>
-          <span class="fw-jur">${esc(f.jurisdiction)}</span>
-          <span class="tag ${f.kind === "law" ? "k-law" : ""}">${f.kind === "law" ? "Law" : "Voluntary"}</span>
-          <span class="fw-plus" aria-hidden="true"></span>
-        </summary>
-        <div class="fw-body">
-          <p>${esc(f.summary)}</p>
-          <div><span class="qc-label">Status</span><p>${esc(f.status)}</p></div>
-          ${f.citation ? `<div><span class="qc-label">Source</span><p class="mono">${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.citation)}</a>` : esc(f.citation)}</p></div>` : ""}
-        </div>
-      </details>`).join("")}
+  <div class="section-head reveal" id="coverage"><h2>Coverage</h2><span class="tiny">Regulations are checked automatically. Standards apply when you choose them.</span></div>
+  <div class="cov reveal">
+    <div class="cov-head">
+      <h3>Regulations <i>${REGULATIONS.length}</i></h3>
+      <div class="chips" role="group" aria-label="Filter by region">
+        ${["All", ...regions].map((g, i) => `<button class="chip ${i === 0 ? "on" : ""}" data-act="region" data-v="${g}">${g}</button>`).join("")}
+      </div>
+    </div>
+    ${covTable(REGULATIONS)}
+    <div class="cov-head"><h3>Standards and Frameworks <i>${STANDARDS.length}</i></h3><span class="tiny">Voluntary. Certifiable standards are marked.</span></div>
+    ${covTable(STANDARDS)}
   </div>
 
   <section class="closer reveal">
-    <h2>Know Where You Stand <em>Before Launch Day.</em></h2>
-    <button class="btn primary" data-act="new">Start a new intake</button>
+    <h2>Before You Launch, <em>Ask MayAI.</em></h2>
+    <button class="btn primary" data-act="new">Start an intake</button>
   </section>`;
 }
 
+function covTable(list) {
+  return `<div class="fw-acc">
+    <div class="fw-cols" aria-hidden="true"><span>Name</span><span>What it is</span><span>Jurisdiction</span><span>Status</span><span></span></div>
+    ${list.map((f) => {
+      const group = f.kind === "law" ? JURISDICTIONS.find((j) => j.id === f.geo[0])?.group : "International";
+      return `
+      <details class="fw-row" name="fw" data-region="${esc(group)}">
+        <summary>
+          <span class="fw-name">${esc(f.short)}</span>
+          <span class="fw-type">${esc(f.type)}</span>
+          <span class="fw-jur">${esc(f.jurisdiction)}</span>
+          <span class="fw-eff">${f.certifiable ? `<span class="tag k-cert">Certifiable</span>` : esc(f.effective)}</span>
+          <span class="fw-plus" aria-hidden="true"></span>
+        </summary>
+        <div class="fw-body">
+          <div><span class="qc-label">${esc(f.name)}</span><p>${esc(f.summary)}</p></div>
+          <div><span class="qc-label">Status</span><p>${esc(f.status)}</p></div>
+          <div><span class="qc-label">Source</span><p class="mono">${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.citation)}</a>` : esc(f.citation)}</p></div>
+        </div>
+      </details>`;
+    }).join("")}
+  </div>`;
+}
+
 // Home interactions that do not need a full re-render
+const heroTimers = [];
 function initHome() {
-  // Reveal on scroll
   const els = app.querySelectorAll(".reveal");
   if ("IntersectionObserver" in window) {
     const io = new IntersectionObserver((entries) => entries.forEach((en) => {
-      if (en.isIntersecting) { en.target.classList.add("in"); countUp(en.target); io.unobserve(en.target); }
+      if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
     }), { threshold: 0.12 });
     els.forEach((el) => io.observe(el));
   } else els.forEach((el) => el.classList.add("in"));
+  countUp(app.querySelector(".hero-stats"));
+  heroTimers.forEach(clearTimeout); heroTimers.length = 0;
+  const card = document.getElementById("hero-card");
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (card) playDemo(card, 0, reduce);
 }
 function countUp(root) {
-  root.querySelectorAll("[data-count]").forEach((el) => {
-    const end = +el.dataset.count; const t0 = performance.now(); const d = 900;
-    const step = (t) => { const p = Math.min(1, (t - t0) / d); el.textContent = Math.round(end * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(step); };
+  if (!root) return;
+  root.querySelectorAll("[data-count]").forEach((el, k) => {
+    const end = +el.dataset.count; const d = 1100; let t0 = null;
+    const step = (t) => { if (t0 === null) t0 = t + k * 120; const p = Math.max(0, Math.min(1, (t - t0) / d)); el.textContent = Math.round(end * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(step); };
     requestAnimationFrame(step);
   });
 }
@@ -218,16 +300,21 @@ app.addEventListener("pointermove", (e) => {
 });
 
 function viewSetup() {
+  const nStd = STANDARDS.filter((f) => state.enabled.includes(f.id)).length;
   return `
   <section class="setup">
-    <h1>Which Frameworks Should We Check?</h1>
-    <p class="muted">Laws are checked for whether they apply to your use case. Voluntary frameworks are applied as selected. You can change this later.</p>
+    <h1>Which Standards Should We Apply?</h1>
+    <p class="muted">Regulations are checked automatically against your answers, because they apply whether you choose them or not. Voluntary standards and frameworks apply only if you select them.</p>
+    <div class="setup-regs">
+      <span class="qc-label">Checked automatically · ${REGULATIONS.length} regulations</span>
+      <div class="reg-pills">${REGULATIONS.map((f) => `<span title="${esc(f.name)}">${esc(f.short)}<small>${esc(f.jurisdiction.replace(", US", ""))}</small></span>`).join("")}</div>
+    </div>
     <div class="fw-grid">
-      ${FRAMEWORKS.map((f) => {
+      ${STANDARDS.map((f) => {
         const on = state.enabled.includes(f.id);
         return `<button class="fw ${on ? "on" : ""}" data-act="toggle-fw" data-id="${f.id}" aria-pressed="${on}">
           <span class="switch" aria-hidden="true"></span>
-          <span class="tag">${f.kind === "law" ? "Law" : "Voluntary"} · ${esc(f.jurisdiction)}</span>
+          <span class="tag ${f.certifiable ? "k-cert" : ""}">${esc(f.effective)}</span>
           <h3>${esc(f.name)}</h3>
           <p>${esc(f.summary)}</p>
           <p class="tiny">${esc(f.status)}</p>
@@ -237,8 +324,8 @@ function viewSetup() {
     <div class="row">
       <button class="btn ghost" data-act="home">← Back</button>
       <span class="spacer"></span>
-      <span class="tiny">${state.enabled.length} selected</span>
-      <button class="btn primary" data-act="to-intake" ${state.enabled.length ? "" : "disabled"}>Continue to intake →</button>
+      <span class="tiny">${REGULATIONS.length} regulations · ${nStd} standard${nStd === 1 ? "" : "s"} selected</span>
+      <button class="btn primary" data-act="to-intake">Continue to intake →</button>
     </div>
   </section>`;
 }
@@ -310,15 +397,18 @@ function viewLive() {
       ${started ? `<ul class="why">${t.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : `<p class="tiny">Starts updating as you answer.</p>`}
     </div>
     <div>
-      <h4>Frameworks</h4>
+      <h4>Regulations</h4>
       <div class="fwlist">
-        ${FRAMEWORKS.map((f) => {
-          const r = app_[f.id];
-          const dim = ["off", "out_of_scope", "pending"].includes(r.status);
-          const label = { in_scope: "Applies", possible: "May apply", out_of_scope: "Does not apply", off: "Off", pending: "Not yet known" }[r.status];
-          return `<div class="fwrow ${dim ? "dim" : ""}"><span class="st st-${r.status}"></span><div><b>${esc(f.short)}</b> · ${label}<div class="r">${esc(r.reason)}</div></div></div>`;
-        }).join("")}
+        ${(() => {
+          const rel = REGULATIONS.filter((f) => ["in_scope", "possible", "pending"].includes(app_[f.id].status));
+          const no = REGULATIONS.length - rel.length;
+          return (rel.length ? rel.map((f) => liveRow(f, app_[f.id])).join("") : `<p class="tiny" style="margin:0">None apply so far.</p>`) + (no ? `<p class="tiny" style="margin:4px 0 0">${no} others do not apply to the locations selected.</p>` : "");
+        })()}
       </div>
+    </div>
+    <div>
+      <h4>Standards</h4>
+      <div class="fwlist">${STANDARDS.filter((f) => app_[f.id].status === "in_scope").map((f) => liveRow(f, app_[f.id])).join("") || `<p class="tiny" style="margin:0">None selected.</p>`}</div>
     </div>
     <div>
       <h4>Open Questions</h4>
@@ -326,11 +416,17 @@ function viewLive() {
     </div>`;
 }
 
+function liveRow(f, r) {
+  const dim = ["off", "out_of_scope", "pending"].includes(r.status);
+  return `<div class="fwrow ${dim ? "dim" : ""}"><span class="st st-${r.status}"></span><div><b>${esc(f.short)}</b> · ${STATUS_LABEL[r.status]}<div class="r">${esc(r.reason)}</div></div></div>`;
+}
+
 function viewResult() {
   const a = state.answers;
   const r = assess(a, state.enabled);
   const req = Object.values(r.obligations).flat().filter((o) => ["required", "blocker"].includes(o.level)).length;
-  const inScope = FRAMEWORKS.filter((f) => ["in_scope", "possible"].includes(r.applicability[f.id].status));
+  const inScope = REGULATIONS.filter((f) => ["in_scope", "possible"].includes(r.applicability[f.id].status));
+  const jmap = jurisdictionMap(a, state.enabled);
   const tabs = [["overview", "Overview"], ["obligations", `Obligations (${Object.values(r.obligations).flat().length})`], ["controls", `Controls (${r.controls.length})`], ["answers", "Your Answers"]];
   return `
   <section class="card result-head">
@@ -341,7 +437,7 @@ function viewResult() {
     </div>
     <div class="stats">
       <div class="stat"><b class="t-${r.tier.tier}" style="background:none">${r.tier.label}</b><span>Risk tier</span></div>
-      <div class="stat"><b>${inScope.length}</b><span>Frameworks apply</span></div>
+      <div class="stat"><b>${inScope.length}</b><span>Regulations apply</span></div>
       <div class="stat"><b>${req}</b><span>Legal requirements</span></div>
     </div>
   </section>
@@ -360,14 +456,16 @@ function viewResult() {
     ${r.open.length ? `<div class="card list"><h3>Open Questions</h3>${r.open.map((o) => `<div class="item"><span class="lvl lvl-check">${o.kind === "unsure" ? "Not sure" : "Missing"}</span><div>${esc(o.label)}</div></div>`).join("")}</div>` : ""}
     ${r.conditions.length ? `<div class="card list cond"><h3>Conditions Before Launch</h3>${r.conditions.map((c) => `<div class="item"><span class="lvl lvl-required">Condition</span><div>${esc(c.text)} <span class="ref mono">${c.control}</span></div></div>`).join("")}</div>` : ""}
     <div class="card list"><h3>Why This Risk Tier <span class="tag t-${r.tier.tier}">${r.tier.label}</span></h3>${r.tier.why.map((w) => `<div class="item"><span class="lvl lvl-note">Signal</span><div>${esc(w)}</div></div>`).join("")}</div>
-    <div class="card list"><h3>Frameworks</h3>${FRAMEWORKS.map((f) => { const x = r.applicability[f.id]; return `<div class="item"><span class="lvl ${x.status === "in_scope" ? "lvl-recommended" : x.status === "possible" ? "lvl-check" : "lvl-note"}">${{ in_scope: "Applies", possible: "May apply", out_of_scope: "No", off: "Off", pending: "Unknown" }[x.status]}</span><div><b>${esc(f.name)}</b><div class="tiny">${esc(x.reason)}</div></div></div>`; }).join("")}</div>
-    <div class="notice">This result is general information to support your own review, not legal advice. Legal status checked November 2026; Colorado's implementing rules are still pending.</div>
+    ${jmap.length ? `<div class="card list"><h3>Jurisdictions</h3><div class="jur-grid">${jmap.map((j) => `<div class="jur"><b>${esc(j.label)}</b>${j.regs.length ? j.regs.map((x) => `<span class="${x.status}">${esc(x.short)}${x.status === "possible" ? " (may apply)" : ""}</span>`).join("") : `<span class="none">No covered regulation applies</span>`}</div>`).join("")}</div></div>` : ""}
+    <div class="card list"><h3>Regulations</h3>${[...REGULATIONS].sort((x, y) => ORDER[r.applicability[x.id].status] - ORDER[r.applicability[y.id].status]).map((f) => fwItem(f, r.applicability[f.id])).join("")}</div>
+    <div class="card list"><h3>Standards and Frameworks</h3>${STANDARDS.map((f) => fwItem(f, r.applicability[f.id])).join("")}</div>
+    <div class="notice">This result is general information to support your own review, not legal advice. Legal status checked November 2026. Some implementing rules (Colorado, Illinois, South Korea) are still being finalised.</div>
   </div>
 
   <div class="panel" ${state.tab === "obligations" ? "" : "hidden"}>
     ${Object.keys(r.obligations).length ? FRAMEWORKS.filter((f) => r.obligations[f.id]).map((f) => `
       <div class="card list">
-        <h3>${esc(f.name)} <span class="tag">${f.kind === "law" ? "Law" : "Voluntary"}</span></h3>
+        <h3>${esc(f.name)} <span class="tag ${f.kind === "law" ? "k-law" : ""}">${f.kind === "law" ? "Regulation" : "Voluntary"}</span></h3>
         <p class="tiny" style="margin-top:-6px">${esc(f.citation)}</p>
         ${r.obligations[f.id].map((o) => `<div class="item"><span class="lvl lvl-${o.level}">${o.level}</span><div>${esc(o.text)}<div><span class="ref">${esc(o.ref)}</span>${o.when ? ` · <span class="when">${esc(o.when)}</span>` : ""}</div></div></div>`).join("")}
       </div>`).join("") : `<div class="card list"><p class="muted">No framework obligations triggered yet. Answer the location and decision questions, or switch on more frameworks.</p></div>`}
@@ -392,6 +490,11 @@ function viewResult() {
   </div>`;
 }
 
+const ORDER = { in_scope: 0, possible: 1, pending: 2, out_of_scope: 3, off: 4 };
+function fwItem(f, x) {
+  return `<div class="item ${["out_of_scope", "off"].includes(x.status) ? "dim" : ""}"><span class="lvl ${x.status === "in_scope" ? "lvl-recommended" : x.status === "possible" ? "lvl-check" : "lvl-note"}">${{ in_scope: "Applies", possible: "May apply", out_of_scope: "No", off: "Off", pending: "Unknown" }[x.status]}</span><div><b>${esc(f.name)}</b> <span class="tiny">· ${esc(f.type)} · ${esc(f.jurisdiction)}</span><div class="tiny">${esc(x.reason)}</div></div></div>`;
+}
+
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function answerText(q, v) {
@@ -408,13 +511,13 @@ function markdown() {
   const r = assess(a, state.enabled);
   const L = [];
   L.push(`# AI Intake Result: ${a.uc_name || "Untitled Use Case"}`, "");
-  L.push(`**Decision:** ${r.decision.label}  `, `**Risk tier:** ${r.tier.label}  `, `**Generated:** ${new Date().toISOString().slice(0, 10)} with AI Intake Check`, "");
+  L.push(`**Decision:** ${r.decision.label}  `, `**Risk tier:** ${r.tier.label}  `, `**Generated:** ${new Date().toISOString().slice(0, 10)} with MayAI`, "");
   L.push("> General information only, not legal advice. Legal status checked November 2026.", "");
   if (a.uc_description) L.push(a.uc_description, "");
   L.push("## Why This Risk Tier", ...r.tier.why.map((w) => `- ${w}`), "");
   if (r.open.length) L.push("## Open Questions", ...r.open.map((o) => `- ${o.label} (${o.kind === "unsure" ? "not sure" : "missing"})`), "");
   if (r.conditions.length) L.push("## Conditions Before Launch", ...r.conditions.map((c) => `- ${c.text} (${c.control})`), "");
-  L.push("## Frameworks", ...FRAMEWORKS.map((f) => `- **${f.name}**: ${r.applicability[f.id].status.replace(/_/g, " ")}. ${r.applicability[f.id].reason}`), "");
+  L.push("## Regulations and Frameworks", ...FRAMEWORKS.filter((f) => r.applicability[f.id].status !== "off").map((f) => `- **${f.name}**: ${r.applicability[f.id].status.replace(/_/g, " ")}. ${r.applicability[f.id].reason}`), "");
   L.push("## Obligations");
   for (const f of FRAMEWORKS) if (r.obligations[f.id]) {
     L.push(`### ${f.name}`, ...r.obligations[f.id].map((o) => `- **${o.level}** (${o.ref}${o.when ? `; ${o.when}` : ""}): ${o.text}`), "");
@@ -495,6 +598,8 @@ app.addEventListener("click", (e) => {
       const g = QC.find((x) => x.id === el.dataset.g); const v = el.dataset.v;
       if (g.multi) { const cur = quick[g.id] || []; quick[g.id] = cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]; }
       else quick[g.id] = v;
+      if (g.id === "does" && !quick.does.length) quick.does = [v];
+      if (g.id === "regions" && !quick.regions.length) quick.regions = [v];
       document.getElementById("qc-inputs").innerHTML = viewQuick();
       const res = document.getElementById("qc-result");
       res.innerHTML = viewQuickResult();
@@ -502,9 +607,15 @@ app.addEventListener("click", (e) => {
       return;
     }
     case "qc-go": {
-      const qa = Object.fromEntries(Object.entries(quickAnswers()).filter(([k, v]) => v !== undefined && k !== "prohibited" && k !== "decision_role" && k !== "aedt"));
+      const qa = Object.fromEntries(Object.entries(quickAnswers()).filter(([k, v]) => v !== undefined && !["prohibited", "decision_role", "aedt"].includes(k) && !(k === "domain" && quick.decides === "yes" && v[0] === "none")));
       state = { ...defaultState(), answers: qa };
       return go("setup");
+    }
+    case "region": {
+      const v = el.dataset.v;
+      el.parentElement.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === el));
+      app.querySelectorAll('.fw-row[data-region]').forEach((row) => { if (row.closest(".cov") && REGULATIONS.some((f) => row.querySelector(".fw-name").textContent === f.short)) row.classList.toggle("hide", v !== "All" && row.dataset.region !== v); });
+      return;
     }
     case "filter": {
       const v = el.dataset.v;

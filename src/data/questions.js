@@ -1,3 +1,5 @@
+import { JURISDICTIONS } from "./frameworks.js";
+
 // Intake question bank. `showIf` decides whether a question is relevant given earlier answers.
 // `unsureable` adds an "Not sure yet" option; choosing it sends the intake back for more information.
 
@@ -5,6 +7,7 @@ const has = (a, key, val) => Array.isArray(a[key]) && a[key].includes(val);
 const any = (a, key, vals) => Array.isArray(a[key]) && a[key].some((v) => vals.includes(v));
 const isVendor = (a) => ["vendor_saas", "vendor_api"].includes(a.uc_build);
 const consequential = (a) => Array.isArray(a.domain) && a.domain.some((d) => d !== "none");
+const isGenAI = (a) => any(a, "uc_type", ["genai", "agent"]);
 const externalUsers = (a) => any(a, "uc_users", ["customers", "business_customers", "public"]);
 
 export const SECTIONS = [
@@ -23,13 +26,31 @@ export const SECTIONS = [
       },
       {
         id: "uc_type",
-        type: "single",
-        label: "What kind of AI is it?",
+        type: "multi",
+        label: "What does the AI do?",
+        help: "Most systems combine several, for example an agent built on a generative model.",
         options: [
-          { value: "genai_assistant", label: "Generative assistant", hint: "Chat, drafting, summarising, content generation" },
-          { value: "predictive", label: "Predictive model", hint: "Scores, ranks, classifies or recommends" },
-          { value: "agent", label: "Agent", hint: "Takes actions in other systems on its own" },
-          { value: "vision_biometric", label: "Vision or biometric", hint: "Analyses images, video, voice or faces" },
+          { value: "genai", label: "Generates content", hint: "Text, images, audio, video or code" },
+          { value: "predictive", label: "Predicts, scores or classifies", hint: "Rankings, risk scores, recommendations" },
+          { value: "agent", label: "Takes actions in other systems", hint: "Sends, books, updates or pays without a person doing it" },
+          { value: "biometric", label: "Analyses faces, voices or bodies", hint: "Recognition, emotion or biometric analysis" },
+        ],
+      },
+      {
+        id: "industry",
+        type: "single",
+        label: "Which industry is this used in?",
+        help: "Used to flag sector rules, such as health care disclosure duties.",
+        options: [
+          { value: "financial", label: "Financial services" },
+          { value: "insurance", label: "Insurance" },
+          { value: "healthcare", label: "Health care" },
+          { value: "hr", label: "HR and recruiting" },
+          { value: "education", label: "Education" },
+          { value: "public_sector", label: "Public sector" },
+          { value: "retail", label: "Retail and e-commerce" },
+          { value: "technology", label: "Software and technology" },
+          { value: "other", label: "Other" },
         ],
       },
       {
@@ -75,14 +96,8 @@ export const SECTIONS = [
         id: "geo",
         type: "multi",
         label: "Where are the people affected by this AI located?",
-        options: [
-          { value: "eu", label: "European Union" },
-          { value: "colorado", label: "Colorado" },
-          { value: "nyc", label: "New York City" },
-          { value: "other_us", label: "Elsewhere in the US" },
-          { value: "uk", label: "United Kingdom" },
-          { value: "other", label: "Elsewhere" },
-        ],
+        help: "Include every place where users, customers, employees or applicants are. This decides which laws apply.",
+        options: JURISDICTIONS.map((j) => ({ value: j.id, label: j.group === "United States" && j.id !== "other_us" ? `US: ${j.label}` : j.label })),
       },
       {
         id: "company_size",
@@ -307,7 +322,7 @@ export const SECTIONS = [
         id: "ai_disclosed",
         type: "single",
         label: "Will people be told they are interacting with AI?",
-        showIf: (a) => externalUsers(a) && ["genai_assistant", "agent"].includes(a.uc_type),
+        showIf: (a) => externalUsers(a) && isGenAI(a),
         options: [
           { value: "yes", label: "Yes, clearly" },
           { value: "no", label: "No" },

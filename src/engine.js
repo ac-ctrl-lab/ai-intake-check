@@ -1,11 +1,15 @@
 // Deterministic intake engine. Pure functions only: same answers in, same result out.
-import { FRAMEWORKS, FRAMEWORK_BY_ID } from "./data/frameworks.js";
+import { FRAMEWORKS, FRAMEWORK_BY_ID, REGULATIONS, STANDARDS, JURISDICTIONS, JURISDICTION_LABEL } from "./data/frameworks.js";
 import { ALL_QUESTIONS, QUESTION_BY_ID, isVisible } from "./data/questions.js";
 import { CONTROLS } from "./data/controls.js";
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const has = (a, k, v) => arr(a[k]).includes(v);
 const anyOf = (a, k, vals) => arr(a[k]).some((x) => vals.includes(x));
+// uc_type became multi-select; accept the old single values too.
+const LEGACY_TYPE = { genai_assistant: ["genai"], agent: ["genai", "agent"], predictive: ["predictive"], vision_biometric: ["biometric"] };
+export const normType = (v) => (Array.isArray(v) ? v : typeof v === "string" ? LEGACY_TYPE[v] || [v] : []);
+const isType = (a, t) => normType(a.uc_type).includes(t);
 
 export const UNSURE = "__unsure";
 
@@ -59,7 +63,7 @@ export function computeSignals(a) {
   if (a.personal_data === "yes") s.add("personal_data");
   const sens = arr(a.sensitive_data).filter((x) => x !== "none");
   if (sens.length) s.add("sensitive_data");
-  if (s.has("personal_data") && (s.has("sensitive_data") || s.has("consequential") || a.uc_type === "vision_biometric")) s.add("personal_data_high");
+  if (s.has("personal_data") && (s.has("sensitive_data") || s.has("consequential") || isType(a, "biometric"))) s.add("personal_data_high");
 
   if (["vendor_saas", "vendor_api"].includes(a.uc_build)) s.add("vendor");
   if (a.vendor_training === "may_train") s.add("vendor_may_train");
@@ -67,12 +71,14 @@ export function computeSignals(a) {
   if (a.role === "provider") s.add("provider");
 
   if (anyOf(a, "uc_users", ["customers", "business_customers", "public", "applicants"])) s.add("external_users");
-  if (["genai_assistant", "agent"].includes(a.uc_type)) s.add("genai");
-  if (a.uc_type === "agent" || a.access_scope === "actions") s.add("agent_actions");
+  if (isType(a, "genai") || isType(a, "agent")) s.add("genai");
+  if (isType(a, "agent") || a.access_scope === "actions") s.add("agent_actions");
   if (a.access_scope === "internal_data") s.add("internal_data");
   if (a.untrusted_content === "yes") s.add("untrusted_content");
   if (["confidential", "restricted"].includes(a.data_class)) s.add("confidential_data");
-  if (a.uc_type === "vision_biometric") s.add("biometric");
+  if (isType(a, "biometric")) s.add("biometric");
+  if (isType(a, "predictive")) s.add("predictive");
+  if (a.industry) s.add(`industry_${a.industry}`);
 
   if (a.synthetic === "text") s.add("synthetic_text");
   if (a.synthetic === "media") s.add("synthetic_media");
@@ -96,53 +102,101 @@ export function computeSignals(a) {
 }
 
 // ---------- Framework applicability ----------
-// Returns { id: { status: "in_scope" | "possible" | "out_of_scope" | "off", reason } }
+// Returns { id: { status: "in_scope" | "possible" | "out_of_scope" | "off" | "pending", reason } }
+// Regulations are always checked: they apply whether or not someone selects them.
+// Voluntary standards apply only when selected in `enabled`.
+const KOREA_HIGH_IMPACT = ["employment", "credit_lending", "healthcare", "education", "critical_infrastructure", "essential_services"];
+const CA_SIGNIFICANT = ["employment", "credit_lending", "housing", "education", "healthcare", "insurance", "essential_services"];
+
+const RULES = {
+  eu_ai_act: (a) => ({ status: "in_scope", reason: "People in the EU are affected or the system is offered there" }),
+  gdpr: (a) => personalDataRule(a, "Personal data of people in the EU"),
+  uk_gdpr: (a) => personalDataRule(a, "Personal data of people in the UK"),
+  colorado: (a, s, domains) => {
+    const coDomains = domains.filter((d) => COLORADO_DOMAINS.includes(d));
+    if (!arr(a.domain).length) return { status: "pending", reason: "Waiting for decision areas" };
+    if (!coDomains.length) return { status: "out_of_scope", reason: "No consequential-decision domain under SB 26-189" };
+    if (s.has("consequential_strong")) return { status: "in_scope", reason: `Materially influences ${coDomains.map((d) => DOMAIN_LABEL[d]).join(", ")} decisions` };
+    return { status: "possible", reason: "Depends on whether the AI materially influences the decision" };
+  },
+  ca_admt: (a, s, domains) => {
+    const d = domains.filter((x) => CA_SIGNIFICANT.includes(x));
+    if (a.personal_data === "no") return { status: "out_of_scope", reason: "No personal data" };
+    if (!arr(a.domain).length) return { status: "pending", reason: "Waiting for decision areas" };
+    if (!d.length) return { status: "out_of_scope", reason: "No significant decision about California consumers" };
+    if (s.has("consequential_strong")) return { status: "possible", reason: "Significant decision with little human involvement; applies if your business meets CCPA thresholds" };
+    return { status: "possible", reason: "Applies if the AI substantially replaces human decision-making and you meet CCPA thresholds" };
+  },
+  ca_ai_transparency: (a, s) => {
+    if (!s.has("genai")) return { status: "out_of_scope", reason: "No generative AI" };
+    if (a.role === "provider" && s.has("external_users") && s.has("synthetic_out")) return { status: "possible", reason: "Applies if your public generative AI system has over 1 million monthly users in California" };
+    return { status: "out_of_scope", reason: "Applies to providers of large public generative AI systems, not to businesses using them" };
+  },
+  illinois_hra: (a, s) => {
+    if (has(a, "domain", "employment") || a.industry === "hr") {
+      return s.has("consequential") || a.aedt === "yes"
+        ? { status: "in_scope", reason: "AI influences employment decisions about people in Illinois" }
+        : { status: "possible", reason: "Applies if the AI influences recruitment, hiring, promotion or other employment decisions" };
+    }
+    if (!arr(a.domain).length) return { status: "pending", reason: "Waiting for decision areas" };
+    return { status: "out_of_scope", reason: "Not used for employment decisions" };
+  },
+  nyc_ll144: (a, s) => {
+    if (!has(a, "domain", "employment")) return arr(a.domain).length ? { status: "out_of_scope", reason: "Not used for employment decisions" } : { status: "pending", reason: "Waiting for decision areas" };
+    if (a.aedt !== "yes") return { status: a.aedt === "no" ? "out_of_scope" : "pending", reason: "Not used to screen or rank for hiring or promotion" };
+    if (s.has("consequential_strong")) return { status: "in_scope", reason: "Substantially assists hiring or promotion decisions in NYC" };
+    return { status: "possible", reason: "Depends on whether it substantially assists the decision (6 RCNY § 5-300)" };
+  },
+  texas_traiga: () => ({ status: "in_scope", reason: "AI deployed for people in Texas; baseline prohibitions apply to every business" }),
+  utah_ai: (a, s) => {
+    if (!s.has("genai")) return { status: "out_of_scope", reason: "No generative AI interacting with consumers" };
+    if (!s.has("external_users")) return { status: "out_of_scope", reason: "No consumers interact with it" };
+    return { status: "in_scope", reason: "Generative AI interacts with consumers in Utah" };
+  },
+  korea_ai_basic: (a, s, domains) => {
+    if (s.has("genai") || domains.some((d) => KOREA_HIGH_IMPACT.includes(d)) || s.has("biometric")) return { status: "in_scope", reason: "Generative or high-impact AI affecting users in South Korea" };
+    return { status: "possible", reason: "Applies mainly to generative and high-impact AI; check the final decrees" };
+  },
+  japan_ai_promotion: () => ({ status: "in_scope", reason: "AI used in Japan; cooperation duty only, no penalties" }),
+  china_genai: (a, s) => {
+    if (s.has("genai") && (s.has("synthetic_out") || s.has("external_users"))) return { status: "in_scope", reason: "Generative AI content produced or published for people in China" };
+    if (s.has("genai")) return { status: "possible", reason: "Applies if AI-generated content is provided to or published for the public in China" };
+    return { status: "out_of_scope", reason: "No generative AI content" };
+  },
+};
+
+function personalDataRule(a, reasonYes) {
+  if (a.personal_data === "yes") return { status: "in_scope", reason: reasonYes };
+  if (a.personal_data === UNSURE) return { status: "possible", reason: "Unclear whether personal data is processed" };
+  if (a.personal_data === "no") return { status: "out_of_scope", reason: "No personal data" };
+  return { status: "pending", reason: "Waiting for data answers" };
+}
+
 export function applicability(a, enabled) {
   const s = computeSignals(a);
   const geo = arr(a.geo);
   const domains = arr(a.domain).filter((d) => d !== "none");
   const out = {};
   for (const f of FRAMEWORKS) {
-    if (!enabled.includes(f.id)) { out[f.id] = { status: "off", reason: "Switched off" }; continue; }
-    let r;
-    switch (f.id) {
-      case "eu_ai_act":
-        r = geo.includes("eu")
-          ? { status: "in_scope", reason: "People in the EU are affected or the system is offered there" }
-          : geo.length ? { status: "out_of_scope", reason: "No EU nexus selected" } : { status: "pending", reason: "Waiting for location" };
-        break;
-      case "gdpr":
-        if (!geo.length) r = { status: "pending", reason: "Waiting for location" };
-        else if (!geo.includes("eu")) r = { status: "out_of_scope", reason: "No EU nexus selected" };
-        else if (a.personal_data === "yes") r = { status: "in_scope", reason: "Personal data of people in the EU" };
-        else if (a.personal_data === UNSURE) r = { status: "possible", reason: "Unclear whether personal data is processed" };
-        else if (a.personal_data === "no") r = { status: "out_of_scope", reason: "No personal data" };
-        else r = { status: "pending", reason: "Waiting for data answers" };
-        break;
-      case "colorado": {
-        const coDomains = domains.filter((d) => COLORADO_DOMAINS.includes(d));
-        if (!geo.length) r = { status: "pending", reason: "Waiting for location" };
-        else if (!geo.includes("colorado")) r = { status: "out_of_scope", reason: "No Colorado consumers, employees or applicants" };
-        else if (!arr(a.domain).length) r = { status: "pending", reason: "Waiting for decision areas" };
-        else if (!coDomains.length) r = { status: "out_of_scope", reason: "No consequential-decision domain under SB 26-189" };
-        else if (s.has("consequential_strong")) r = { status: "in_scope", reason: `Materially influences ${coDomains.map((d) => DOMAIN_LABEL[d]).join(", ")} decisions` };
-        else r = { status: "possible", reason: "Depends on whether the AI materially influences the decision" };
-        break;
-      }
-      case "nyc_ll144":
-        if (!geo.length) r = { status: "pending", reason: "Waiting for location" };
-        else if (!geo.includes("nyc")) r = { status: "out_of_scope", reason: "No NYC candidates or employees" };
-        else if (!has(a, "domain", "employment")) r = { status: "out_of_scope", reason: "Not used for employment decisions" };
-        else if (a.aedt !== "yes") r = { status: a.aedt === "no" ? "out_of_scope" : "pending", reason: "Not used to screen or rank for hiring or promotion" };
-        else if (s.has("consequential_strong")) r = { status: "in_scope", reason: "Substantially assists hiring or promotion decisions in NYC" };
-        else r = { status: "possible", reason: "Depends on whether it substantially assists the decision (6 RCNY § 5-300)" };
-        break;
-      default:
-        r = { status: "in_scope", reason: "Selected as a voluntary framework" };
+    if (f.kind === "voluntary") {
+      out[f.id] = enabled.includes(f.id) ? { status: "in_scope", reason: "Selected as a voluntary framework" } : { status: "off", reason: "Not selected" };
+      continue;
     }
-    out[f.id] = r;
+    if (!geo.length) { out[f.id] = { status: "pending", reason: "Waiting for location" }; continue; }
+    if (!f.geo.some((g) => geo.includes(g))) { out[f.id] = { status: "out_of_scope", reason: `No one affected in ${f.jurisdiction.replace(", US", "")}` }; continue; }
+    out[f.id] = (RULES[f.id] || (() => ({ status: "possible", reason: "Check applicability" })))(a, s, domains);
   }
   return out;
+}
+
+// Jurisdictions selected and the regulations that apply in each
+export function jurisdictionMap(a, enabled) {
+  const app = applicability(a, enabled);
+  return arr(a.geo).map((g) => ({
+    id: g,
+    label: JURISDICTION_LABEL[g] || g,
+    regs: REGULATIONS.filter((f) => f.geo.includes(g) && ["in_scope", "possible"].includes(app[f.id].status)).map((f) => ({ id: f.id, short: f.short, status: app[f.id].status })),
+  }));
 }
 
 // ---------- Risk tier ----------
@@ -317,6 +371,95 @@ export function obligations(a, enabled) {
     if (s.has("consequential") || s.has("personal_data_high")) push(F, { level: "recommended", ref: "Clause 6.1.4, A.5", text: "Perform and document an AI system impact assessment." });
     push(F, { level: "recommended", ref: "Clause 6.1.3", text: "Record the selected controls in the Statement of Applicability." });
     if (s.has("vendor")) push(F, { level: "recommended", ref: "A.10", text: "Define responsibilities with the vendor and assess its AI practices." });
+  }
+
+  const on = (id) => ["in_scope", "possible"].includes(app[id]?.status);
+
+  // UK GDPR
+  if (on("uk_gdpr")) {
+    const F = "uk_gdpr";
+    if (app.uk_gdpr.status === "possible") push(F, { level: "check", ref: "UK GDPR Art. 4(1)", text: "Confirm whether inputs or outputs include personal data. If they do, the items below apply." });
+    push(F, { level: "required", ref: "UK GDPR Art. 6, Arts. 13–14", text: "Document a lawful basis for the AI processing and cover it in privacy notices." });
+    if (s.has("personal_data_high")) push(F, { level: "required", ref: "UK GDPR Art. 35", text: "A data protection impact assessment is likely required (sensitive data, decisions about people, or biometric analysis)." });
+    if (s.has("automated_decision") && s.has("consequential")) push(F, { level: "required", ref: "UK GDPR Arts. 22A–22D (DUAA 2025)", text: "For significant decisions based solely on automated processing: tell people about the decision, let them make representations, obtain human intervention and contest it. Stricter limits apply to special-category data." });
+    if (s.has("vendor")) push(F, { level: "required", ref: "UK GDPR Art. 28; Ch. V", text: "Sign a data processing agreement with the vendor and check the transfer mechanism if data leaves the UK." });
+  }
+
+  // California ADMT regulations
+  if (on("ca_admt")) {
+    const F = "ca_admt";
+    push(F, { level: "check", ref: "CCPA § 1798.140(d)", text: "Applies only if your business meets a CCPA threshold: annual revenue above the inflation-adjusted limit (about $26.6 million), buying, selling or sharing personal information of 100,000+ California consumers, or earning half of revenue from selling or sharing it." });
+    push(F, { level: "required", ref: "§ 7220", text: "Give a pre-use notice explaining the purpose of the automated decision-making technology, the right to opt out and the right to access information about it.", when: "From 1 Jan 2027" });
+    push(F, { level: "required", ref: "§§ 7221–7222", text: "Offer an opt-out of the technology for significant decisions, unless a human appeal exception applies, and answer access requests about the logic and outcome.", when: "From 1 Jan 2027" });
+    push(F, { level: "required", ref: "§§ 7150 ff.", text: "Complete a risk assessment before using automated decision-making technology for significant decisions.", when: "Compliance documented by 31 Dec 2027" });
+  }
+
+  // California AI Transparency Act
+  if (on("ca_ai_transparency")) {
+    const F = "ca_ai_transparency";
+    push(F, { level: "check", ref: "§ 22757.1", text: "Applies only to covered providers: generative AI systems publicly accessible in California with over 1 million monthly visitors or users." });
+    push(F, { level: "required", ref: "§§ 22757.2–22757.3", text: "Offer a free AI-detection tool, include a latent (metadata) disclosure in AI-generated image, video and audio, and give users the option of a visible disclosure.", when: "From 2 Aug 2026" });
+  }
+
+  // Illinois
+  if (on("illinois_hra")) {
+    const F = "illinois_hra";
+    if (app.illinois_hra.status === "possible") push(F, { level: "check", ref: "775 ILCS 5/2-102(L)", text: "Covered if AI is used to influence recruitment, hiring, promotion, training selection, discipline, discharge or terms of employment." });
+    push(F, { level: "required", ref: "775 ILCS 5/2-102(L)(1)", text: "Do not use AI in a way that has a discriminatory effect on protected classes, and do not use zip codes as a proxy for protected classes. Test outcomes across groups.", when: "In force" });
+    push(F, { level: "required", ref: "775 ILCS 5/2-102(L)(2); draft IDHR rules", text: "Notify employees and applicants that AI is used, which decisions it affects and how to request an accommodation; notify employees annually and within 30 days of adopting a new system.", when: "In force; rule details pending" });
+    if (s.has("biometric")) push(F, { level: "required", ref: "820 ILCS 42 (AI Video Interview Act)", text: "If AI analyses video interviews: notify applicants, explain how it works and obtain consent beforehand." });
+  }
+
+  // Texas TRAIGA
+  if (on("texas_traiga")) {
+    const F = "texas_traiga";
+    push(F, { level: "required", ref: "HB 149 (prohibited uses)", text: "Do not develop or deploy AI with intent to unlawfully discriminate against a protected class, to manipulate people into self-harm, harm or crime, or to produce unlawful sexual content or deepfakes of minors.", when: "In force" });
+    if (a.industry === "healthcare") push(F, { level: "required", ref: "HB 149, health care disclosure", text: "Disclose to patients that AI is used in their health care service or treatment, before or at the time of the interaction.", when: "In force" });
+    push(F, { level: "note", ref: "HB 149 (enforcement and defences)", text: "Enforced by the Attorney General only, with a 60-day cure period. Following the NIST AI RMF or a similar framework, or finding problems through your own testing, is a defence." });
+  }
+
+  // Utah
+  if (on("utah_ai")) {
+    const F = "utah_ai";
+    push(F, { level: "required", ref: "Utah Code ch. 13-77", text: "If a consumer asks whether they are talking to a person, clearly disclose that they are interacting with generative AI.", when: "In force" });
+    if (["healthcare", "financial", "insurance"].includes(a.industry) || s.has("sensitive_data")) push(F, { level: "check", ref: "Utah Code ch. 13-77 (regulated occupations)", text: "In a licensed profession, disclose AI use proactively at the start of high-risk interactions (health, financial or biometric data, or personal advice people rely on)." });
+  }
+
+  // South Korea
+  if (on("korea_ai_basic")) {
+    const F = "korea_ai_basic";
+    push(F, { level: "required", ref: "AI Basic Act (transparency duties)", text: "Notify users in advance that a product or service uses generative or high-impact AI.", when: "In force; fines after grace period" });
+    if (s.has("genai")) push(F, { level: "required", ref: "AI Basic Act (transparency duties)", text: "Label generative AI output, and clearly disclose AI-generated sound, images or video that are hard to tell apart from real content." });
+    if (domains.some((d) => KOREA_HIGH_IMPACT.includes(d)) || s.has("biometric")) push(F, { level: "required", ref: "AI Basic Act (high-impact AI)", text: "Likely high-impact AI: assess it before deployment, put in place risk management, explanation of outcomes, user protection, human oversight and documentation." });
+    push(F, { level: "check", ref: "AI Basic Act (domestic representative)", text: "Foreign businesses above revenue or user thresholds (e.g. over 1 million daily users in Korea) must appoint a domestic representative." });
+  }
+
+  // Japan
+  if (on("japan_ai_promotion")) push("japan_ai_promotion", { level: "note", ref: "AI Promotion Act (duties of businesses)", text: "Cooperate with government AI measures and requests for information. No penalties; the AI Business Guidelines describe recommended practices." });
+
+  // China
+  if (on("china_genai")) {
+    const F = "china_genai";
+    push(F, { level: "required", ref: "Labelling Measures; GB 45438-2025", text: "Add visible labels to AI-generated text, images, audio and video, and embed implicit labels in file metadata.", when: "In force" });
+    if (s.has("external_users")) push(F, { level: "check", ref: "Interim Measures for Generative AI Services (2023)", text: "Public-facing generative AI services in China require security assessment and algorithm filing." });
+  }
+
+  // ISO 42005, 23894, 27001, 27701
+  if (on("iso_42005") && (s.has("consequential") || s.has("personal_data_high") || s.has("biometric") || s.has("external_users")))
+    push("iso_42005", { level: "recommended", ref: "ISO/IEC 42005, Clauses 5–6", text: "Run a documented AI system impact assessment covering affected people and groups, and review it when the system changes." });
+  if (on("iso_42005")) push("iso_42005", { level: "recommended", ref: "ISO/IEC 42005", text: "Record intended uses, foreseeable misuse and the impact assessment owner." });
+  if (on("iso_23894")) {
+    push("iso_23894", { level: "recommended", ref: "ISO/IEC 23894, Clause 6.4", text: "Identify, analyse and evaluate AI-specific risk sources, such as data quality, opacity and automation level, and record them in the risk register." });
+    push("iso_23894", { level: "recommended", ref: "ISO/IEC 23894, Clauses 6.5–6.6", text: "Select risk treatments and monitor them over the life cycle." });
+  }
+  if (on("iso_27001")) {
+    push("iso_27001", { level: "recommended", ref: "Annex A 5.9, 5.12", text: "Add the AI system and its data flows to the asset inventory and classify the information it processes." });
+    if (s.has("vendor")) push("iso_27001", { level: "recommended", ref: "Annex A 5.19–5.23", text: "Treat the AI vendor as a supplier: security requirements in the contract, review and monitoring, including cloud service use." });
+    push("iso_27001", { level: "recommended", ref: "Annex A 8.2–8.5, 8.15–8.16", text: "Apply access control, privileged access and logging to the AI system and its integrations." });
+  }
+  if (on("iso_27701") && s.has("personal_data")) {
+    push("iso_27701", { level: "recommended", ref: "ISO/IEC 27701", text: "Record the AI processing in the records of processing, confirm purpose and legal basis, and update privacy notices." });
+    push("iso_27701", { level: "recommended", ref: "ISO/IEC 27701", text: "Make sure data subject requests (access, correction, deletion) can be met for data held in prompts, outputs and logs." });
   }
   return res;
 }
