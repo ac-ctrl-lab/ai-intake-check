@@ -30,7 +30,7 @@
 
   --radius: 6px;
   --shadow: none;
-  --display: "Bricolage Grotesque", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --display: "Space Grotesk", "Geist", ui-sans-serif, system-ui, sans-serif;
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -289,6 +289,8 @@ textarea { min-height: 88px; resize: vertical; }
 
 
 /* ---------- v3: interactive home ---------- */
+/* Large display type uses the lighter weight; Space Grotesk is dense at 600 */
+.hero h1, .section-head h2, .setup > h1, .qsection h2, .result-head h1, .tier-word, .stats-strip b, .qc-nums b, .closer h2, .stat b, .fw-name { font-weight: 500 !important; }
 .eyebrow { font-family: var(--mono); font-size: 12px; color: var(--accent-ink); align-self: center; }
 .section-head h2 { font-weight: 600; }
 
