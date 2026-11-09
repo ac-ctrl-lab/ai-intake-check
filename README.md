@@ -1,4 +1,4 @@
-# AI Intake Check
+# Gen-AI Intake Check
 
 **Live site:** https://ac-ctrl-lab.github.io/ai-intake-check/
 
