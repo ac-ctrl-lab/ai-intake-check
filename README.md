@@ -28,7 +28,7 @@ Companies review new AI use cases through an automated GenAI intake process orch
 | Colorado SB 26-189 | Replaces the Colorado AI Act. From 1 Jan 2027: notice, adverse-decision explanation within 30 days, human review, 3-year records. AG rules pending |
 | NYC Local Law 144 | Hiring or promotion tools used on NYC candidates or employees: annual independent bias audit, public summary, 10-business-day notice |
 | NIST AI RMF 1.0 + Generative AI Profile (AI 600-1) | Voluntary. Govern, Map, Measure, Manage, plus the relevant GenAI risk categories |
-| ISO/IEC 4200 1:2023 | Voluntary. Clause and Annex A references only, since the standard text is copyrighted |
+| ISO/IEC 42001:2023 | Voluntary. Clause and Annex A references only, since the standard text is copyrighted |
 
 ## Design decisions
 
