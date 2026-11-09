@@ -91,6 +91,10 @@ SPEC.md                 v1 spec
 - A saved register of use cases (AI inventory)
 - Visual redesign
 
+## Design versions
+
+The current design is in `assets/styles.css`. The previous design is kept in `assets/styles-v1.css`. To switch back, change `styles.css` to `styles-v1.css` in the stylesheet line of `index.html`.
+
 ## License
 
    PolyForm Noncommercial 1.0.0. Free for noncommercial use; commercial use requires a separate license. See [LICENSE](LICENSE).

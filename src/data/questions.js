@@ -10,7 +10,7 @@ const externalUsers = (a) => any(a, "uc_users", ["customers", "business_customer
 export const SECTIONS = [
   {
     id: "usecase",
-    title: "Use case",
+    title: "Use Case",
     lens: "Business",
     intro: "What the AI does and how you get it.",
     questions: [
@@ -67,7 +67,7 @@ export const SECTIONS = [
   },
   {
     id: "scope",
-    title: "Where and who",
+    title: "Where and Who",
     lens: "Legal",
     intro: "Jurisdiction decides which laws apply.",
     questions: [
@@ -99,7 +99,7 @@ export const SECTIONS = [
   },
   {
     id: "impact",
-    title: "Decisions and impact",
+    title: "Decisions and Impact",
     lens: "Legal",
     intro: "The single biggest driver of risk is whether the AI influences decisions about people.",
     questions: [
@@ -164,7 +164,7 @@ export const SECTIONS = [
   },
   {
     id: "privacy",
-    title: "Data and privacy",
+    title: "Data and Privacy",
     lens: "Privacy",
     intro: "What goes into the system, where it goes, and how long it stays.",
     questions: [
@@ -228,7 +228,7 @@ export const SECTIONS = [
   },
   {
     id: "security",
-    title: "Information security",
+    title: "Information Security",
     lens: "Security",
     intro: "Access, data exposure and new attack surfaces such as prompt injection.",
     questions: [
@@ -299,7 +299,7 @@ export const SECTIONS = [
   },
   {
     id: "oversight",
-    title: "Transparency and oversight",
+    title: "Transparency and Oversight",
     lens: "Trust",
     intro: "Telling people, keeping a human in the loop, and checking the output is right.",
     questions: [

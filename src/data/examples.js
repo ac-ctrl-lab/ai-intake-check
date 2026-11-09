@@ -7,10 +7,10 @@ const yesOps = { owner: "Head of Operations", monitoring_owner: "yes", ai_policy
 export const EXAMPLES = [
   {
     id: "support_chatbot",
-    title: "Customer support chatbot",
+    title: "Customer Support Chatbot",
     blurb: "A SaaS chatbot answers customer questions on the website and looks up order status.",
     answers: {
-      uc_name: "Customer support chatbot",
+      uc_name: "Customer Support Chatbot",
       uc_description: "A vendor chatbot on our website answers customer questions from our help centre and looks up order status. Hands off to a human agent on request.",
       uc_type: "genai_assistant", uc_build: "vendor_saas", uc_users: ["customers"], role: "deployer",
       geo: ["eu", "other_us"], company_size: "50_249",
@@ -24,7 +24,7 @@ export const EXAMPLES = [
   },
   {
     id: "resume_screening",
-    title: "Resume screening",
+    title: "Resume Screening",
     blurb: "A hiring tool ranks applicants for open roles in New York and Colorado.",
     answers: {
       uc_name: "Resume screening and ranking",
@@ -41,7 +41,7 @@ export const EXAMPLES = [
   },
   {
     id: "meeting_notes",
-    title: "Meeting summaries",
+    title: "Meeting Summaries",
     blurb: "An internal assistant transcribes and summarises team meetings, including in the Berlin office.",
     answers: {
       uc_name: "Meeting transcription and summaries",
@@ -58,7 +58,7 @@ export const EXAMPLES = [
   },
   {
     id: "marketing_images",
-    title: "Marketing image generation",
+    title: "Marketing Image Generation",
     blurb: "The marketing team generates campaign images with an image model.",
     answers: {
       uc_name: "Campaign image generation",
@@ -75,7 +75,7 @@ export const EXAMPLES = [
   },
   {
     id: "loan_scoring",
-    title: "Small-business loan scoring",
+    title: "Small-Business Loan Scoring",
     blurb: "An online lender's own model approves or declines loan applications from sole proprietors.",
     answers: {
       uc_name: "Loan application scoring",
@@ -92,7 +92,7 @@ export const EXAMPLES = [
   },
   {
     id: "emotion_monitoring",
-    title: "Call-centre emotion monitoring",
+    title: "Call-Centre Emotion Monitoring",
     blurb: "Voice analytics rate agents' frustration and stress during calls, at the Dublin office.",
     answers: {
       uc_name: "Agent emotion monitoring",
@@ -109,7 +109,7 @@ export const EXAMPLES = [
   },
   {
     id: "code_assistant",
-    title: "Coding assistant",
+    title: "Coding Assistant",
     blurb: "Developers use an AI coding assistant inside their editor with access to the repository.",
     answers: {
       uc_name: "AI coding assistant",
@@ -126,7 +126,7 @@ export const EXAMPLES = [
   },
   {
     id: "ap_agent",
-    title: "Invoice processing agent",
+    title: "Invoice Processing Agent",
     blurb: "An agent reads supplier invoices from a shared inbox, matches them to orders and emails suppliers about mismatches.",
     answers: {
       uc_name: "Accounts payable agent",

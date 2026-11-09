@@ -31,7 +31,7 @@ export const FRAMEWORKS = [
   },
   {
     id: "colorado",
-    name: "Colorado ADMT law (SB 26-189)",
+    name: "Colorado ADMT Law (SB 26-189)",
     short: "Colorado",
     kind: "law",
     jurisdiction: "Colorado, US",

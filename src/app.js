@@ -1,6 +1,7 @@
 import { assess, applicability, riskTier, openQuestions, progress, computeSignals, FRAMEWORKS, FRAMEWORK_BY_ID, UNSURE } from "./engine.js";
 import { SECTIONS, isVisible } from "./data/questions.js";
 import { EXAMPLES } from "./data/examples.js";
+import { CONTROLS } from "./data/controls.js";
 
 const STORE = "ai-intake-check:v1";
 const app = document.getElementById("app");
@@ -42,49 +43,184 @@ function renderSteps() {
   stepsEl.innerHTML = state.view === "home" ? "" : steps.map(([v, l]) => `<span class="${state.view === v ? "on" : ""}">${l}</span>`).join("");
 }
 
+// ---------- Home: quick check ----------
+const QC = [
+  { id: "geo", label: "Where are the people affected?", multi: true, opts: [["eu", "European Union"], ["colorado", "Colorado"], ["nyc", "New York City"], ["other_us", "Elsewhere in the US"]] },
+  { id: "type", label: "What kind of AI is it?", opts: [["genai_assistant", "Generative assistant"], ["predictive", "Predictive model"], ["agent", "Agent"], ["vision_biometric", "Vision or biometric"]] },
+  { id: "users", label: "Who uses it or is affected?", multi: true, opts: [["employees", "Employees"], ["customers", "Customers"], ["public", "The public"], ["applicants", "Job applicants"]] },
+  { id: "domain", label: "Does it shape decisions about people?", opts: [["none", "No"], ["employment", "Hiring"], ["credit_lending", "Lending"], ["insurance", "Insurance"], ["healthcare", "Health care"]] },
+];
+let quick = { geo: ["eu"], type: "genai_assistant", users: ["customers"], domain: "none" };
+
+function quickAnswers() {
+  const q = quick;
+  const decides = q.domain && q.domain !== "none";
+  const people = decides || (q.users || []).some((u) => u !== "employees");
+  return {
+    uc_type: q.type, uc_users: q.users, geo: q.geo,
+    domain: q.domain ? [q.domain] : undefined,
+    decision_role: decides ? "substantially_assists" : undefined,
+    aedt: q.domain === "employment" ? "yes" : decides ? "no" : undefined,
+    prohibited: ["none"],
+    personal_data: people ? "yes" : undefined,
+  };
+}
+
+function viewQuickResult() {
+  const a = quickAnswers();
+  const enabled = FRAMEWORKS.filter((f) => f.defaultOn).map((f) => f.id);
+  const t = riskTier(a);
+  const ap = applicability(a, enabled);
+  const r = assess(a, enabled);
+  const applies = FRAMEWORKS.filter((f) => ap[f.id].status === "in_scope");
+  return `
+    <div class="qc-tier">
+      <span class="qc-label">Risk tier</span>
+      <b class="tier-word tw-${t.tier}" data-anim>${t.label}</b>
+      <div class="meter lv${TIER_LEVEL[t.tier]}" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <p class="qc-why">${esc(t.why[0] || "")}</p>
+    </div>
+    <div class="qc-fw">
+      <span class="qc-label">Frameworks</span>
+      ${FRAMEWORKS.map((f) => { const s = ap[f.id].status; return `<div class="qc-fwrow ${s === "in_scope" ? "on" : s === "possible" ? "maybe" : ""}"><span class="st st-${s}"></span>${esc(f.short)}<em>${{ in_scope: "Applies", possible: "May apply", out_of_scope: "No", off: "Off", pending: "—" }[s]}</em></div>`; }).join("")}
+    </div>
+    <div class="qc-nums">
+      <div><b>${applies.length}</b><span>Frameworks Apply</span></div>
+      <div><b>${r.controls.length}</b><span>Controls</span></div>
+      <div><b>${Object.values(r.obligations).flat().length}</b><span>Obligations</span></div>
+    </div>`;
+}
+
+function viewQuick() {
+  return QC.map((g) => `
+    <div class="qc-group">
+      <span class="qc-q">${g.label}</span>
+      <div class="chips">${g.opts.map(([v, l]) => {
+        const on = g.multi ? (quick[g.id] || []).includes(v) : quick[g.id] === v;
+        return `<button class="chip ${on ? "on" : ""}" data-act="qc" data-g="${g.id}" data-v="${v}" aria-pressed="${on}">${l}</button>`;
+      }).join("")}</div>
+    </div>`).join("");
+}
+
 function viewHome() {
   const hasDraft = Object.keys(state.answers).length > 0;
+  const nQuestions = SECTIONS.flatMap((s) => s.questions).length;
+  const enabled = FRAMEWORKS.filter((f) => f.defaultOn).map((f) => f.id);
   return `
   <section class="hero">
     <div>
       <span class="tag">Free · private · no sign-up</span>
-      <h1>Can we use this AI tool? <em>Find out before you launch.</em></h1>
+      <h1>Can We Use This AI Tool? <em>Find Out Before You Launch.</em></h1>
       <p class="lead">An AI use-case intake for small and mid-size companies. Answer questions on legal, privacy, security and oversight, and get the frameworks that apply, a risk tier, an intake decision and the controls to put in place.</p>
       <div class="row">
         <button class="btn primary" data-act="new">Start a new intake</button>
         ${hasDraft ? `<button class="btn" data-act="resume">Resume draft</button>` : ""}
-        <a class="btn ghost" href="#examples">Try an example ↓</a>
+        <a class="btn ghost" href="#try">Try it in 20 seconds ↓</a>
       </div>
     </div>
-    <div class="card hero-art" aria-hidden="true">
+    <div class="hero-art" aria-hidden="true">
       <div class="flow">
-        <div><b>1</b><span>Choose the frameworks you care about</span></div>
-        <div><b>2</b><span>Answer about 30 questions; only the relevant ones appear</span></div>
-        <div><b>3</b><span>Watch scope and risk update as you go</span></div>
-        <div><b>4</b><span>Get a decision, obligations and NIST-format controls</span></div>
+        <div><b>01</b><span>Choose the frameworks you care about</span></div>
+        <div><b>02</b><span>Answer about 30 questions; only the relevant ones appear</span></div>
+        <div><b>03</b><span>Watch scope and risk update as you go</span></div>
+        <div><b>04</b><span>Get a decision, obligations and NIST-format controls</span></div>
       </div>
       <div class="lenses">${["Legal", "Privacy", "Security", "Trust", "Governance"].map((l) => `<span class="tag">${l}</span>`).join("")}</div>
     </div>
   </section>
-  <div class="section-head" id="examples"><h2>Example use cases</h2><span class="tiny">Load one to see the full flow, then change any answer.</span></div>
-  <div class="examples">
-    ${EXAMPLES.map((e) => `
-      <button class="example" data-act="example" data-id="${e.id}">
+
+  <section class="stats-strip reveal">
+    <div><b data-count="${FRAMEWORKS.length}">${FRAMEWORKS.length}</b><span>Laws and frameworks</span></div>
+    <div><b data-count="${nQuestions}">${nQuestions}</b><span>Questions at most</span></div>
+    <div><b data-count="${CONTROLS.length}">${CONTROLS.length}</b><span>NIST-format controls</span></div>
+    <div><b>0</b><span>Bytes sent to a server</span></div>
+  </section>
+
+  <div class="section-head reveal" id="try"><span class="eyebrow">01</span><h2>Try It in 20 Seconds</h2><span class="tiny">Four questions. The result is computed by the same rules as the full intake.</span></div>
+  <section class="quick reveal">
+    <div class="qc-inputs" id="qc-inputs">${viewQuick()}</div>
+    <div class="qc-result" id="qc-result" aria-live="polite">${viewQuickResult()}</div>
+    <div class="qc-cta"><span class="tiny">This is a first read. The full intake adds privacy, security and oversight questions and gives you the decision.</span><button class="btn primary" data-act="qc-go">Continue with these answers →</button></div>
+  </section>
+
+  <div class="section-head reveal" id="examples"><span class="eyebrow">02</span><h2>Example Use Cases</h2><span class="tiny">Hover for the outcome. Click to open the full result.</span></div>
+  <div class="filters reveal" role="group" aria-label="Filter by risk tier">
+    ${["all", "low", "medium", "high", "prohibited"].map((t) => `<button class="chip ${t === "all" ? "on" : ""}" data-act="filter" data-v="${t}">${t === "all" ? "All" : cap(t)}${t === "all" ? ` <i>${EXAMPLES.length}</i>` : ` <i>${EXAMPLES.filter((e) => e.expected.tier === t).length}</i>`}</button>`).join("")}
+  </div>
+  <div class="examples reveal" id="example-grid">
+    ${EXAMPLES.map((e, i) => {
+      const r = assess(e.answers, enabled);
+      const applies = FRAMEWORKS.filter((f) => r.applicability[f.id].status === "in_scope").map((f) => f.short);
+      return `
+      <button class="example spot" data-act="example" data-id="${e.id}" data-tier="${e.expected.tier}">
+        <span class="ex-num">${String(i + 1).padStart(2, "0")}</span>
         <h3>${esc(e.title)}</h3>
         <p>${esc(e.blurb)}</p>
-        <span class="row"><span class="tag t-${e.expected.tier}">${cap(e.expected.tier)} risk</span></span>
-      </button>`).join("")}
+        <span class="tag t-${e.expected.tier}">${cap(e.expected.tier)} risk</span>
+        <span class="ex-peek">
+          <span class="ex-dec ${DTONE[r.decision.tone]}">${esc(r.decision.label)}</span>
+          <span class="ex-apps">${applies.map((s) => `<span>${esc(s)}</span>`).join("")}</span>
+          <span class="ex-meta">${r.controls.length} controls · Open result →</span>
+        </span>
+      </button>`;
+    }).join("")}
   </div>
-  <div class="section-head"><h2>Frameworks covered</h2></div>
-  <div class="examples">
-    ${FRAMEWORKS.map((f) => `<div class="card example"><span class="tag">${f.kind === "law" ? "Law" : "Voluntary"} · ${esc(f.jurisdiction)}</span><h3>${esc(f.name)}</h3><p>${esc(f.summary)}</p></div>`).join("")}
-  </div>`;
+
+  <div class="section-head reveal"><span class="eyebrow">03</span><h2>Frameworks Covered</h2><span class="tiny">Click a framework for its status and when it applies.</span></div>
+  <div class="fw-acc reveal">
+    ${FRAMEWORKS.map((f, i) => `
+      <details class="fw-row" name="fw">
+        <summary>
+          <span class="ex-num">${String(i + 1).padStart(2, "0")}</span>
+          <span class="fw-name">${esc(f.name)}</span>
+          <span class="fw-jur">${esc(f.jurisdiction)}</span>
+          <span class="tag ${f.kind === "law" ? "k-law" : ""}">${f.kind === "law" ? "Law" : "Voluntary"}</span>
+          <span class="fw-plus" aria-hidden="true"></span>
+        </summary>
+        <div class="fw-body">
+          <p>${esc(f.summary)}</p>
+          <div><span class="qc-label">Status</span><p>${esc(f.status)}</p></div>
+          ${f.citation ? `<div><span class="qc-label">Source</span><p class="mono">${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.citation)}</a>` : esc(f.citation)}</p></div>` : ""}
+        </div>
+      </details>`).join("")}
+  </div>
+
+  <section class="closer reveal">
+    <h2>Know Where You Stand <em>Before Launch Day.</em></h2>
+    <button class="btn primary" data-act="new">Start a new intake</button>
+  </section>`;
 }
+
+// Home interactions that do not need a full re-render
+function initHome() {
+  // Reveal on scroll
+  const els = app.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => entries.forEach((en) => {
+      if (en.isIntersecting) { en.target.classList.add("in"); countUp(en.target); io.unobserve(en.target); }
+    }), { threshold: 0.12 });
+    els.forEach((el) => io.observe(el));
+  } else els.forEach((el) => el.classList.add("in"));
+}
+function countUp(root) {
+  root.querySelectorAll("[data-count]").forEach((el) => {
+    const end = +el.dataset.count; const t0 = performance.now(); const d = 900;
+    const step = (t) => { const p = Math.min(1, (t - t0) / d); el.textContent = Math.round(end * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}
+app.addEventListener("pointermove", (e) => {
+  const c = e.target.closest(".spot");
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  c.style.setProperty("--mx", `${e.clientX - r.left}px`);
+  c.style.setProperty("--my", `${e.clientY - r.top}px`);
+});
 
 function viewSetup() {
   return `
   <section class="setup">
-    <h1>Which frameworks should we check?</h1>
+    <h1>Which Frameworks Should We Check?</h1>
     <p class="muted">Laws are checked for whether they apply to your use case. Voluntary frameworks are applied as selected. You can change this later.</p>
     <div class="fw-grid">
       ${FRAMEWORKS.map((f) => {
@@ -166,7 +302,7 @@ function viewLive() {
   const started = Object.keys(a).length > 0;
   return `
     <div>
-      <h4>Risk tier (live)</h4>
+      <h4>Risk Tier (Live)</h4>
       <div class="tier">
         <span class="tier-badge t-${t.tier}">${started ? t.label : "—"}</span>
         <div class="meter lv${started ? TIER_LEVEL[t.tier] : 0}" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -185,7 +321,7 @@ function viewLive() {
       </div>
     </div>
     <div>
-      <h4>Open questions</h4>
+      <h4>Open Questions</h4>
       <p class="tiny" style="margin:0">${open.length ? `${open.length} unanswered or marked “not sure”` : "None. Ready for a decision."}</p>
     </div>`;
 }
@@ -195,12 +331,12 @@ function viewResult() {
   const r = assess(a, state.enabled);
   const req = Object.values(r.obligations).flat().filter((o) => ["required", "blocker"].includes(o.level)).length;
   const inScope = FRAMEWORKS.filter((f) => ["in_scope", "possible"].includes(r.applicability[f.id].status));
-  const tabs = [["overview", "Overview"], ["obligations", `Obligations (${Object.values(r.obligations).flat().length})`], ["controls", `Controls (${r.controls.length})`], ["answers", "Your answers"]];
+  const tabs = [["overview", "Overview"], ["obligations", `Obligations (${Object.values(r.obligations).flat().length})`], ["controls", `Controls (${r.controls.length})`], ["answers", "Your Answers"]];
   return `
   <section class="card result-head">
     <div>
       <span class="decision ${DTONE[r.decision.tone]}">${esc(r.decision.label)}</span>
-      <h1>${esc(a.uc_name || "Untitled use case")}</h1>
+      <h1>${esc(a.uc_name || "Untitled Use Case")}</h1>
       <p class="muted" style="margin:0">${esc(r.decision.summary)}</p>
     </div>
     <div class="stats">
@@ -221,9 +357,9 @@ function viewResult() {
   <nav class="tabs" role="tablist">${tabs.map(([id, l]) => `<button role="tab" class="${state.tab === id ? "on" : ""}" data-act="tab" data-id="${id}" aria-selected="${state.tab === id}">${l}</button>`).join("")}</nav>
 
   <div class="panel" ${state.tab === "overview" ? "" : "hidden"}>
-    ${r.open.length ? `<div class="card list"><h3>Open questions</h3>${r.open.map((o) => `<div class="item"><span class="lvl lvl-check">${o.kind === "unsure" ? "Not sure" : "Missing"}</span><div>${esc(o.label)}</div></div>`).join("")}</div>` : ""}
-    ${r.conditions.length ? `<div class="card list cond"><h3>Conditions before launch</h3>${r.conditions.map((c) => `<div class="item"><span class="lvl lvl-required">Condition</span><div>${esc(c.text)} <span class="ref mono">${c.control}</span></div></div>`).join("")}</div>` : ""}
-    <div class="card list"><h3>Why this risk tier <span class="tag t-${r.tier.tier}">${r.tier.label}</span></h3>${r.tier.why.map((w) => `<div class="item"><span class="lvl lvl-note">Signal</span><div>${esc(w)}</div></div>`).join("")}</div>
+    ${r.open.length ? `<div class="card list"><h3>Open Questions</h3>${r.open.map((o) => `<div class="item"><span class="lvl lvl-check">${o.kind === "unsure" ? "Not sure" : "Missing"}</span><div>${esc(o.label)}</div></div>`).join("")}</div>` : ""}
+    ${r.conditions.length ? `<div class="card list cond"><h3>Conditions Before Launch</h3>${r.conditions.map((c) => `<div class="item"><span class="lvl lvl-required">Condition</span><div>${esc(c.text)} <span class="ref mono">${c.control}</span></div></div>`).join("")}</div>` : ""}
+    <div class="card list"><h3>Why This Risk Tier <span class="tag t-${r.tier.tier}">${r.tier.label}</span></h3>${r.tier.why.map((w) => `<div class="item"><span class="lvl lvl-note">Signal</span><div>${esc(w)}</div></div>`).join("")}</div>
     <div class="card list"><h3>Frameworks</h3>${FRAMEWORKS.map((f) => { const x = r.applicability[f.id]; return `<div class="item"><span class="lvl ${x.status === "in_scope" ? "lvl-recommended" : x.status === "possible" ? "lvl-check" : "lvl-note"}">${{ in_scope: "Applies", possible: "May apply", out_of_scope: "No", off: "Off", pending: "Unknown" }[x.status]}</span><div><b>${esc(f.name)}</b><div class="tiny">${esc(x.reason)}</div></div></div>`; }).join("")}</div>
     <div class="notice">This result is general information to support your own review, not legal advice. Legal status checked November 2026; Colorado's implementing rules are still pending.</div>
   </div>
@@ -271,13 +407,13 @@ function markdown() {
   const a = state.answers;
   const r = assess(a, state.enabled);
   const L = [];
-  L.push(`# AI intake result: ${a.uc_name || "Untitled use case"}`, "");
+  L.push(`# AI Intake Result: ${a.uc_name || "Untitled Use Case"}`, "");
   L.push(`**Decision:** ${r.decision.label}  `, `**Risk tier:** ${r.tier.label}  `, `**Generated:** ${new Date().toISOString().slice(0, 10)} with AI Intake Check`, "");
   L.push("> General information only, not legal advice. Legal status checked November 2026.", "");
   if (a.uc_description) L.push(a.uc_description, "");
-  L.push("## Why this risk tier", ...r.tier.why.map((w) => `- ${w}`), "");
-  if (r.open.length) L.push("## Open questions", ...r.open.map((o) => `- ${o.label} (${o.kind === "unsure" ? "not sure" : "missing"})`), "");
-  if (r.conditions.length) L.push("## Conditions before launch", ...r.conditions.map((c) => `- ${c.text} (${c.control})`), "");
+  L.push("## Why This Risk Tier", ...r.tier.why.map((w) => `- ${w}`), "");
+  if (r.open.length) L.push("## Open Questions", ...r.open.map((o) => `- ${o.label} (${o.kind === "unsure" ? "not sure" : "missing"})`), "");
+  if (r.conditions.length) L.push("## Conditions Before Launch", ...r.conditions.map((c) => `- ${c.text} (${c.control})`), "");
   L.push("## Frameworks", ...FRAMEWORKS.map((f) => `- **${f.name}**: ${r.applicability[f.id].status.replace(/_/g, " ")}. ${r.applicability[f.id].reason}`), "");
   L.push("## Obligations");
   for (const f of FRAMEWORKS) if (r.obligations[f.id]) {
@@ -355,6 +491,27 @@ app.addEventListener("click", (e) => {
     case "export-md": return download(`${slug()}-intake.md`, markdown(), "text/markdown");
     case "export-json": return download(`${slug()}-intake.json`, JSON.stringify({ answers: state.answers, frameworks: state.enabled, result: assess(state.answers, state.enabled) }, (k, v) => (typeof v === "function" ? undefined : v), 2), "application/json");
     case "print": return window.print();
+    case "qc": {
+      const g = QC.find((x) => x.id === el.dataset.g); const v = el.dataset.v;
+      if (g.multi) { const cur = quick[g.id] || []; quick[g.id] = cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]; }
+      else quick[g.id] = v;
+      document.getElementById("qc-inputs").innerHTML = viewQuick();
+      const res = document.getElementById("qc-result");
+      res.innerHTML = viewQuickResult();
+      res.classList.remove("flash"); void res.offsetWidth; res.classList.add("flash");
+      return;
+    }
+    case "qc-go": {
+      const qa = Object.fromEntries(Object.entries(quickAnswers()).filter(([k, v]) => v !== undefined && k !== "prohibited" && k !== "decision_role" && k !== "aedt"));
+      state = { ...defaultState(), answers: qa };
+      return go("setup");
+    }
+    case "filter": {
+      const v = el.dataset.v;
+      app.querySelectorAll(".filters .chip").forEach((c) => c.classList.toggle("on", c === el));
+      app.querySelectorAll("#example-grid .example").forEach((c) => c.classList.toggle("hide", v !== "all" && c.dataset.tier !== v));
+      return;
+    }
   }
 });
 
@@ -375,6 +532,7 @@ function render(opts = {}) {
   renderSteps();
   app.innerHTML = { home: viewHome, setup: viewSetup, intake: viewIntake, result: viewResult }[state.view]();
   if (opts.keepScroll) window.scrollTo(0, y);
+  if (state.view === "home") initHome();
 }
 
 render();
