@@ -93,4 +93,4 @@ SPEC.md                 v1 spec
 
 ## License
 
-MIT
+   PolyForm Noncommercial 1.0.0. Free for noncommercial use; commercial use requires a separate license. See [LICENSE](LICENSE).
