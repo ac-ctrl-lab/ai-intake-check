@@ -132,7 +132,7 @@ function demoCard(i) {
   ];
   const [v1, v2] = VERDICT[r.decision.code];
   return `
-    <div class="dm-bar"><i></i><i></i><i></i><span>mayai.com/intake</span></div>
+    <div class="dm-bar"><i></i><i></i><i></i><span>mayaicheck.com/intake</span></div>
     <div class="dm-body">
       <span class="hc-label">Use case</span>
       <div class="dm-title"><span class="dm-type" data-text="${esc(e.title)}"></span><span class="dm-caret"></span></div>

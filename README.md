@@ -1,6 +1,6 @@
 # MayAI
 
-**Live site:** https://ac-ctrl-lab.github.io/ai-intake-check/
+**Live site:** https://mayaicheck.com
 
 A free AI use-case intake for small and mid-size companies. Describe an AI use case, answer questions on legal, privacy, security and oversight, and get:
 
