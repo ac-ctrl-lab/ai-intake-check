@@ -619,3 +619,9 @@ button.example:hover::after { opacity: 0; }
 .dm-body { padding-bottom: 76px; }
 .dm-stamp { bottom: 18px; right: 22px; }
 .hero-card.demo .hc-dots { position: absolute; left: 26px; bottom: 22px; padding: 0; }
+.basis { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+.basis span { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); margin-right: 4px; }
+.basis a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.basis a:hover { color: var(--accent-ink); }
+.basis.none { color: var(--ink-3); font-style: italic; }
+.item .ref.mono { margin-top: 4px; }

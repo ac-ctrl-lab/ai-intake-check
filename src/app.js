@@ -1,4 +1,4 @@
-import { assess, applicability, riskTier, openQuestions, progress, computeSignals, jurisdictionMap, normType, FRAMEWORKS, FRAMEWORK_BY_ID, UNSURE } from "./engine.js";
+import { assess, applicability, riskTier, openQuestions, progress, computeSignals, jurisdictionMap, conditionBasis, normType, FRAMEWORKS, FRAMEWORK_BY_ID, UNSURE } from "./engine.js";
 import { REGULATIONS, STANDARDS, JURISDICTIONS, JURISDICTION_LABEL } from "./data/frameworks.js";
 import { SECTIONS, isVisible } from "./data/questions.js";
 import { EXAMPLES } from "./data/examples.js";
@@ -20,7 +20,7 @@ let state = load() || defaultState();
 let animate = true;
 
 function load() {
-  try { const s = JSON.parse(localStorage.getItem(STORE)); if (!s || !s.answers) return null; if (s.answers.uc_type) s.answers.uc_type = normType(s.answers.uc_type); return { ...defaultState(), ...s, view: "home" }; } catch { return null; }
+  try { const s = JSON.parse(localStorage.getItem(STORE)); if (!s || !s.answers) return null; if (s.answers.uc_type) s.answers.uc_type = normType(s.answers.uc_type); if (typeof s.answers.synthetic === "string") s.answers.synthetic = [s.answers.synthetic]; return { ...defaultState(), ...s, view: "home" }; } catch { return null; }
 }
 function save() {
   try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* storage unavailable */ }
@@ -373,7 +373,9 @@ function viewQuestion(q, v) {
   if (q.type === "textarea") return `<div class="q"><label class="ql" for="q-${q.id}">${esc(q.label)}</label>${help}<textarea id="q-${q.id}" data-q="${q.id}" placeholder="${esc(q.placeholder || "")}">${esc(v)}</textarea></div>`;
   const multi = q.type === "multi";
   const sel = (val) => (multi ? Array.isArray(v) && v.includes(val) : v === val);
-  const opts = q.options.map((o) => `
+  // "No" / "None" answers always come last
+  const ordered = [...q.options.filter((o) => !["no", "none"].includes(o.value)), ...q.options.filter((o) => ["no", "none"].includes(o.value))];
+  const opts = ordered.map((o) => `
     <button class="opt ${sel(o.value) ? "sel" : ""}" data-act="answer" data-q="${q.id}" data-v="${o.value}" aria-pressed="${sel(o.value)}">
       <span>${esc(o.label)}</span>${o.hint ? `<small>${esc(o.hint)}</small>` : ""}
     </button>`).join("");
@@ -454,8 +456,8 @@ function viewResult() {
 
   <div class="panel" ${state.tab === "overview" ? "" : "hidden"}>
     ${r.open.length ? `<div class="card list"><h3>Open Questions</h3>${r.open.map((o) => `<div class="item"><span class="lvl lvl-check">${o.kind === "unsure" ? "Not sure" : "Missing"}</span><div>${esc(o.label)}</div></div>`).join("")}</div>` : ""}
-    ${r.conditions.length ? `<div class="card list cond"><h3>Conditions Before Launch</h3>${r.conditions.map((c) => `<div class="item"><span class="lvl lvl-required">Condition</span><div>${esc(c.text)} <span class="ref mono">${c.control}</span></div></div>`).join("")}</div>` : ""}
-    <div class="card list"><h3>Why This Risk Tier <span class="tag t-${r.tier.tier}">${r.tier.label}</span></h3>${r.tier.why.map((w) => `<div class="item"><span class="lvl lvl-note">Signal</span><div>${esc(w)}</div></div>`).join("")}</div>
+    ${r.conditions.length ? `<div class="card list cond"><h3>Conditions Before Launch</h3>${r.conditions.map((c) => `<div class="item"><span class="lvl lvl-required">Condition</span><div>${esc(c.text)}${basisLine(conditionBasis(a, state.enabled, c), "Based on")}<div class="ref mono">Control ${c.control}</div></div></div>`).join("")}</div>` : ""}
+    <div class="card list"><h3>Why This Risk Tier <span class="tag t-${r.tier.tier}">${r.tier.label}</span></h3>${r.tier.why.map((w, k) => `<div class="item"><span class="lvl lvl-note">Signal</span><div>${esc(w)}${basisLine(inScopeRefs(r, r.tier.basis[k]), "Legal basis")}</div></div>`).join("")}</div>
     ${jmap.length ? `<div class="card list"><h3>Jurisdictions</h3><div class="jur-grid">${jmap.map((j) => `<div class="jur"><b>${esc(j.label)}</b>${j.regs.length ? j.regs.map((x) => `<span class="${x.status}">${esc(x.short)}${x.status === "possible" ? " (may apply)" : ""}</span>`).join("") : `<span class="none">No covered regulation applies</span>`}</div>`).join("")}</div></div>` : ""}
     <div class="card list"><h3>Regulations</h3>${[...REGULATIONS].sort((x, y) => ORDER[r.applicability[x.id].status] - ORDER[r.applicability[y.id].status]).map((f) => fwItem(f, r.applicability[f.id])).join("")}</div>
     <div class="card list"><h3>Standards and Frameworks</h3>${STANDARDS.map((f) => fwItem(f, r.applicability[f.id])).join("")}</div>
@@ -490,6 +492,16 @@ function viewResult() {
   </div>`;
 }
 
+// Legal references rendered as "EU AI Act, Article 50(1)" with a link to the official text
+function inScopeRefs(r, refs) {
+  return (refs || []).filter((x) => ["in_scope", "possible"].includes(r.applicability[x.fw]?.status));
+}
+function basisLine(refs, label) {
+  if (!refs.length) return `<div class="basis none">${label}: no specific legal requirement among the regulations that apply here; recommended good practice.</div>`;
+  return `<div class="basis"><span>${label}:</span> ${refs.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}, ${esc(x.ref)}</a>`).join(" · ")}</div>`;
+}
+const refText = (refs) => refs.map((x) => `${x.name}, ${x.ref} (${x.url})`).join("; ");
+
 const ORDER = { in_scope: 0, possible: 1, pending: 2, out_of_scope: 3, off: 4 };
 function fwItem(f, x) {
   return `<div class="item ${["out_of_scope", "off"].includes(x.status) ? "dim" : ""}"><span class="lvl ${x.status === "in_scope" ? "lvl-recommended" : x.status === "possible" ? "lvl-check" : "lvl-note"}">${{ in_scope: "Applies", possible: "May apply", out_of_scope: "No", off: "Off", pending: "Unknown" }[x.status]}</span><div><b>${esc(f.name)}</b> <span class="tiny">· ${esc(f.type)} · ${esc(f.jurisdiction)}</span><div class="tiny">${esc(x.reason)}</div></div></div>`;
@@ -514,9 +526,9 @@ function markdown() {
   L.push(`**Decision:** ${r.decision.label}  `, `**Risk tier:** ${r.tier.label}  `, `**Generated:** ${new Date().toISOString().slice(0, 10)} with MayAI`, "");
   L.push("> General information only, not legal advice. Legal status checked November 2026.", "");
   if (a.uc_description) L.push(a.uc_description, "");
-  L.push("## Why This Risk Tier", ...r.tier.why.map((w) => `- ${w}`), "");
+  L.push("## Why This Risk Tier", ...r.tier.why.map((w, k) => { const refs = inScopeRefs(r, r.tier.basis[k]); return `- ${w}${refs.length ? ` — Legal basis: ${refText(refs)}` : ""}`; }), "");
   if (r.open.length) L.push("## Open Questions", ...r.open.map((o) => `- ${o.label} (${o.kind === "unsure" ? "not sure" : "missing"})`), "");
-  if (r.conditions.length) L.push("## Conditions Before Launch", ...r.conditions.map((c) => `- ${c.text} (${c.control})`), "");
+  if (r.conditions.length) L.push("## Conditions Before Launch", ...r.conditions.map((c) => { const refs = conditionBasis(a, state.enabled, c); return `- ${c.text} (control ${c.control})${refs.length ? ` — Based on: ${refText(refs)}` : ""}`; }), "");
   L.push("## Regulations and Frameworks", ...FRAMEWORKS.filter((f) => r.applicability[f.id].status !== "off").map((f) => `- **${f.name}**: ${r.applicability[f.id].status.replace(/_/g, " ")}. ${r.applicability[f.id].reason}`), "");
   L.push("## Obligations");
   for (const f of FRAMEWORKS) if (r.obligations[f.id]) {

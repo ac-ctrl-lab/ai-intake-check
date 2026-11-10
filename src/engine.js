@@ -2,6 +2,7 @@
 import { FRAMEWORKS, FRAMEWORK_BY_ID, REGULATIONS, STANDARDS, JURISDICTIONS, JURISDICTION_LABEL } from "./data/frameworks.js";
 import { ALL_QUESTIONS, QUESTION_BY_ID, isVisible } from "./data/questions.js";
 import { CONTROLS } from "./data/controls.js";
+import { CONDITION_BASIS, cite } from "./data/legal.js";
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const has = (a, k, v) => arr(a[k]).includes(v);
@@ -36,16 +37,19 @@ const ANNEX_III = {
 
 const COLORADO_DOMAINS = ["employment", "education", "credit_lending", "insurance", "housing", "healthcare", "essential_services"];
 
-const PROHIBITED_LABEL = {
-  emotion_workplace: "emotion recognition in the workplace or education (Art. 5(1)(f))",
-  social_scoring: "social scoring (Art. 5(1)(c))",
-  manipulation: "manipulative or deceptive techniques (Art. 5(1)(a))",
-  exploit_vulnerable: "exploiting vulnerabilities (Art. 5(1)(b))",
-  biometric_sensitive: "biometric categorisation by sensitive traits (Art. 5(1)(g))",
-  face_scraping: "untargeted scraping of facial images (Art. 5(1)(e))",
-  crime_prediction: "individual crime prediction from profiling (Art. 5(1)(d))",
-  intimate_imagery: "non-consensual intimate imagery (added by Reg. (EU) 2026/1744, applies from 2 Dec 2026)",
+const PROHIBITED = {
+  emotion_workplace: ["emotion recognition in the workplace or education", "Article 5(1)(f)"],
+  social_scoring: ["social scoring", "Article 5(1)(c)"],
+  manipulation: ["manipulative or deceptive techniques", "Article 5(1)(a)"],
+  exploit_vulnerable: ["exploiting vulnerabilities", "Article 5(1)(b)"],
+  biometric_sensitive: ["biometric categorisation by sensitive traits", "Article 5(1)(g)"],
+  face_scraping: ["untargeted scraping of facial images", "Article 5(1)(e)"],
+  crime_prediction: ["individual crime prediction from profiling", "Article 5(1)(d)"],
+  intimate_imagery: ["non-consensual intimate imagery (added by Reg. (EU) 2026/1744, applies from 2 Dec 2026)", "Article 5"],
 };
+const PROHIBITED_LABEL = Object.fromEntries(Object.entries(PROHIBITED).map(([k, [l, r]]) => [k, `${l} (EU AI Act, ${r})`]));
+const ANNEX_POINT = { employment: "Annex III, point 4", education: "Annex III, point 3", credit_lending: "Annex III, point 5(b)", insurance: "Annex III, point 5(c)", essential_services: "Annex III, point 5(a)", critical_infrastructure: "Annex III, point 2" };
+
 
 // ---------- Signals ----------
 export function computeSignals(a) {
@@ -80,10 +84,11 @@ export function computeSignals(a) {
   if (isType(a, "predictive")) s.add("predictive");
   if (a.industry) s.add(`industry_${a.industry}`);
 
-  if (a.synthetic === "text") s.add("synthetic_text");
-  if (a.synthetic === "media") s.add("synthetic_media");
-  if (a.synthetic === "deepfake") s.add("deepfake");
-  if (["text", "media", "deepfake"].includes(a.synthetic)) s.add("synthetic_out");
+  const syn = Array.isArray(a.synthetic) ? a.synthetic : a.synthetic ? [a.synthetic] : [];
+  if (syn.includes("text")) s.add("synthetic_text");
+  if (syn.includes("media")) s.add("synthetic_media");
+  if (syn.includes("deepfake")) s.add("deepfake");
+  if (syn.some((x) => ["text", "media", "deepfake"].includes(x))) s.add("synthetic_out");
 
   if (a.sso === "no") s.add("no_sso");
   if (a.logging === "no") s.add("no_logging");
@@ -203,31 +208,38 @@ export function jurisdictionMap(a, enabled) {
 export function riskTier(a) {
   const s = computeSignals(a);
   const why = [];
+  const basis = [];
+  const add = (text, refs = []) => { why.push(text); basis.push(refs.map(([fw, ref]) => cite(fw, ref))); };
+  const domains = arr(a.domain).filter((x) => x !== "none");
   if (s.has("prohibited")) {
-    arr(a.prohibited).filter((p) => p !== "none").forEach((p) => why.push(`Prohibited practice: ${PROHIBITED_LABEL[p]}`));
-    return { tier: "prohibited", label: "Prohibited", why };
+    arr(a.prohibited).filter((p) => p !== "none").forEach((p) => add(`Prohibited practice: ${PROHIBITED[p][0]}`, [["eu_ai_act", PROHIBITED[p][1]]]));
+    return { tier: "prohibited", label: "Prohibited", why, basis };
   }
   if (s.has("consequential_strong") || (s.has("consequential") && a.decision_role === UNSURE)) {
-    const d = arr(a.domain).filter((x) => x !== "none").map((x) => DOMAIN_LABEL[x]);
-    why.push(`AI ${a.decision_role === "makes_decision" ? "decides" : a.decision_role === UNSURE ? "may drive" : "is a main factor in"} ${d.join(", ")} decisions`);
-    if (s.has("aedt")) why.push("Screens or ranks people for hiring or promotion");
-    return { tier: "high", label: "High", why };
+    const d = domains.map((x) => DOMAIN_LABEL[x]);
+    const refs = domains.filter((x) => ANNEX_POINT[x]).map((x) => ["eu_ai_act", ANNEX_POINT[x]]);
+    if (domains.some((x) => COLORADO_DOMAINS.includes(x))) refs.push(["colorado", "consequential decisions"]);
+    refs.push(["ca_admt", "§ 7221 (significant decisions)"], ["gdpr", "Article 22"], ["uk_gdpr", "Articles 22A–22D"], ["korea_ai_basic", "high-impact AI"]);
+    if (domains.includes("employment")) refs.push(["illinois_hra", "775 ILCS 5/2-102(L)"]);
+    add(`AI ${a.decision_role === "makes_decision" ? "decides" : a.decision_role === UNSURE ? "may drive" : "is a main factor in"} ${d.join(", ")} decisions`, refs);
+    if (s.has("aedt")) add("Screens or ranks people for hiring or promotion", [["nyc_ll144", "Admin. Code § 20-871"], ["illinois_hra", "775 ILCS 5/2-102(L)"]]);
+    return { tier: "high", label: "High", why, basis };
   }
   if (s.has("biometric") && s.has("sensitive_data") && has(a, "sensitive_data", "biometric")) {
-    why.push("Processes biometric data of identifiable people");
-    return { tier: "high", label: "High", why };
+    add("Processes biometric data of identifiable people", [["eu_ai_act", "Annex III, point 1"], ["gdpr", "Article 9"], ["uk_gdpr", "Article 9"]]);
+    return { tier: "high", label: "High", why, basis };
   }
-  if (s.has("consequential_weak")) why.push("Feeds into decisions about people, alongside other information");
-  if (s.has("external_users") && s.has("genai")) why.push("Generative AI facing customers or the public");
-  if (s.has("agent_actions")) why.push("Can take actions in other systems");
-  if (s.has("sensitive_data")) why.push("Processes sensitive personal data");
-  if (s.has("deepfake")) why.push("Depicts real people in generated media");
-  else if (s.has("synthetic_media")) why.push("Publishes AI-generated media");
-  if (s.has("confidential_data") && s.has("vendor_may_train")) why.push("Confidential data may be used to train a vendor's models");
-  if (s.has("untrusted_content") && (s.has("internal_data") || s.has("agent_actions"))) why.push("Untrusted content combined with internal data or actions (prompt injection exposure)");
-  if (why.length) return { tier: "medium", label: "Medium", why };
-  why.push("Internal or low-impact use with no consequential decisions");
-  return { tier: "low", label: "Low", why };
+  if (s.has("consequential_weak")) add("Feeds into decisions about people, alongside other information", [["eu_ai_act", "Article 6(3)"]]);
+  if (s.has("external_users") && s.has("genai")) add("Generative AI facing customers or the public", [["eu_ai_act", "Article 50(1)"], ["utah_ai", "chapter 13-77"], ["korea_ai_basic", "transparency duties"]]);
+  if (s.has("agent_actions")) add("Can take actions in other systems");
+  if (s.has("sensitive_data")) add("Processes sensitive personal data", [["gdpr", "Article 9"], ["uk_gdpr", "Article 9"]]);
+  if (s.has("deepfake")) add("Depicts real people in generated media", [["eu_ai_act", "Article 50(4)"], ["china_genai", "explicit and implicit labels"]]);
+  else if (s.has("synthetic_media")) add("Publishes AI-generated media", [["eu_ai_act", "Article 50(2)"], ["china_genai", "explicit and implicit labels"]]);
+  if (s.has("confidential_data") && s.has("vendor_may_train")) add("Confidential data may be used to train a vendor's models", [["gdpr", "Article 28"], ["uk_gdpr", "Article 28"]]);
+  if (s.has("untrusted_content") && (s.has("internal_data") || s.has("agent_actions"))) add("Untrusted content combined with internal data or actions (prompt injection exposure)");
+  if (why.length) return { tier: "medium", label: "Medium", why, basis };
+  add("Internal or low-impact use with no consequential decisions");
+  return { tier: "low", label: "Low", why, basis };
 }
 
 // ---------- Open questions ----------
@@ -247,22 +259,31 @@ export function openQuestions(a) {
 export function conditions(a) {
   const s = computeSignals(a);
   const c = [];
-  const add = (text, control) => c.push({ text, control });
-  if (s.has("consequential") && s.has("no_appeal")) add("Set up a way for affected people to get an explanation, correct their data and request human review.", "AI-AD-1");
-  if (s.has("consequential") && s.has("no_bias_testing")) add("Test for different outcomes across groups before launch.", "AI-FA-1");
-  if (s.has("aedt") && arr(a.geo).includes("nyc")) add("Obtain an independent bias audit and post the summary before using the tool on NYC candidates or employees.", "AI-FA-1");
-  if (s.has("consequential_strong") && s.has("low_review")) add("Put a human review step in front of decisions about people.", "AI-HO-1");
-  if (s.has("vendor_may_train") && (s.has("personal_data") || s.has("confidential_data"))) add("Switch off vendor training on your data, or change plans or contract, before sending personal or confidential data.", "AI-SA-9");
-  if (s.has("vendor") && a.vendor_review === "none" && (s.has("personal_data") || s.has("confidential_data"))) add("Complete a vendor security review.", "AI-SA-9");
-  if (s.has("no_disclosure")) add("Tell people they are interacting with AI.", "AI-TR-1");
-  if (s.has("deepfake")) add("Get documented consent from any real person depicted and label the content as AI-generated.", "AI-TR-2");
-  if (s.has("no_sso") && s.has("confidential_data")) add("Put access behind single sign-on with role-based permissions.", "AI-AC-6");
-  if (s.has("no_logging") && (s.has("consequential") || s.has("agent_actions"))) add("Turn on logging of inputs, outputs and actions.", "AI-AU-12");
-  if (s.has("agent_actions") && a.human_review === "none") add("Require approval for high-impact agent actions and add a stop mechanism.", "AI-AG-1");
-  if (s.has("no_monitoring_owner")) add("Name an owner for monitoring and incidents after launch.", "AI-CA-7");
-  if (s.has("no_privacy_notice")) add("Update privacy notices to cover this use of personal data.", "AI-PT-5");
-  if (s.has("no_accuracy_testing") && (s.has("consequential") || s.has("external_users"))) add("Test accuracy on a sample of your own data before launch.", "AI-SA-11");
+  const add = (text, control, key) => c.push({ text, control, key });
+  if (s.has("consequential") && s.has("no_appeal")) add("Set up a way for affected people to get an explanation, correct their data and request human review.", "AI-AD-1", "appeal");
+  if (s.has("consequential") && s.has("no_bias_testing")) add("Test for different outcomes across groups before launch.", "AI-FA-1", "bias");
+  if (s.has("aedt") && arr(a.geo).includes("nyc")) add("Obtain an independent bias audit and post the summary before using the tool on NYC candidates or employees.", "AI-FA-1", "nyc_audit");
+  if (s.has("consequential_strong") && s.has("low_review")) add("Put a human review step in front of decisions about people.", "AI-HO-1", "human_review");
+  if (s.has("vendor_may_train") && (s.has("personal_data") || s.has("confidential_data"))) add("Switch off vendor training on your data, or change plans or contract, before sending personal or confidential data.", "AI-SA-9", "vendor_training");
+  if (s.has("vendor") && a.vendor_review === "none" && (s.has("personal_data") || s.has("confidential_data"))) add("Complete a vendor security review.", "AI-SA-9", "vendor_review");
+  if (s.has("no_disclosure")) add("Tell people they are interacting with AI.", "AI-TR-1", "disclosure");
+  if (s.has("deepfake")) add("Get documented consent from any real person depicted and label the content as AI-generated.", "AI-TR-2", "deepfake");
+  if (s.has("no_sso") && s.has("confidential_data")) add("Put access behind single sign-on with role-based permissions.", "AI-AC-6", "sso");
+  if (s.has("no_logging") && (s.has("consequential") || s.has("agent_actions"))) add("Turn on logging of inputs, outputs and actions.", "AI-AU-12", "logging");
+  if (s.has("agent_actions") && a.human_review === "none") add("Require approval for high-impact agent actions and add a stop mechanism.", "AI-AG-1", "agent");
+  if (s.has("no_monitoring_owner")) add("Name an owner for monitoring and incidents after launch.", "AI-CA-7", "monitoring");
+  if (s.has("no_privacy_notice")) add("Update privacy notices to cover this use of personal data.", "AI-PT-5", "privacy_notice");
+  if (s.has("no_accuracy_testing") && (s.has("consequential") || s.has("external_users"))) add("Test accuracy on a sample of your own data before launch.", "AI-SA-11", "accuracy");
   return c;
+}
+
+// Legal basis for each condition, limited to regulations that apply to this use case
+export function conditionBasis(a, enabled, cond) {
+  const app = applicability(a, enabled);
+  const high = riskTier(a).tier === "high";
+  return (CONDITION_BASIS[cond.key] || [])
+    .filter((b) => ["in_scope", "possible"].includes(app[b.fw]?.status) && (!b.hi || high) && (!b.provider || a.role === "provider"))
+    .map((b) => cite(b.fw, b.ref));
 }
 
 // ---------- Decision ----------

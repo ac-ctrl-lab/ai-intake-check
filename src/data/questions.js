@@ -330,13 +330,13 @@ export const SECTIONS = [
       },
       {
         id: "synthetic",
-        type: "single",
+        type: "multi",
         label: "Does it produce content that is published or sent outside the company?",
         options: [
-          { value: "none", label: "No" },
           { value: "text", label: "Text", hint: "Emails, posts, articles" },
           { value: "media", label: "Images, audio or video" },
           { value: "deepfake", label: "Realistic depictions of real people" },
+          { value: "none", label: "No", exclusive: true },
         ],
       },
       {
