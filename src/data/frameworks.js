@@ -269,7 +269,7 @@ export const FRAMEWORKS = [
     status: "Voluntary, certifiable. References only; the standard text is copyrighted.",
     summary:
       "Requirements for an AI management system: policy, roles, risk and impact assessment, life-cycle controls and supplier management.",
-    url: "https://www.iso.org/standard/81230.html",
+    url: "https://webstore.ansi.org/standards/iso/isoiec420012023",
     defaultOn: false,
   },
   {
@@ -284,7 +284,7 @@ export const FRAMEWORKS = [
     status: "Guidance standard, not certifiable on its own. Supports the impact assessment required by ISO/IEC 42001.",
     summary:
       "How to assess the impact of an AI system on people, groups and society across its life cycle, and how to document and review that assessment.",
-    url: "https://www.iso.org/standard/42005",
+    url: "https://webstore.ansi.org/standards/iso/isoiec420052025",
     defaultOn: false,
   },
   {
@@ -299,7 +299,7 @@ export const FRAMEWORKS = [
     status: "Guidance standard based on ISO 31000, not certifiable on its own.",
     summary:
       "Applies the ISO 31000 risk management process to AI: identifying, analysing, treating and monitoring AI-specific risks.",
-    url: "https://www.iso.org/standard/77304.html",
+    url: "https://webstore.ansi.org/standards/iso/isoiec238942023",
     defaultOn: false,
   },
   {
@@ -315,7 +315,7 @@ export const FRAMEWORKS = [
     status: "Voluntary, certifiable. References only; the standard text is copyrighted.",
     summary:
       "The most widely used security certification. AI systems fall under the same access, logging, supplier and change controls as other systems.",
-    url: "https://www.iso.org/standard/27001",
+    url: "https://webstore.ansi.org/standards/iso/isoiec270012022",
     defaultOn: false,
   },
   {
@@ -331,7 +331,7 @@ export const FRAMEWORKS = [
     status: "Voluntary, certifiable as a standalone standard since the 2025 edition. References only.",
     summary:
       "Privacy management requirements for controllers and processors of personal data: purpose limitation, records, notices, data subject rights and processor management.",
-    url: "https://www.iso.org/standard/27701",
+    url: "https://webstore.ansi.org/standards/iso/isoiec277012025",
     defaultOn: false,
   },
 ];
