@@ -9,7 +9,7 @@ const app = document.getElementById("app");
 const stepsEl = document.getElementById("steps");
 
 const defaultState = () => ({
-  view: "home",
+  view: "setup",
   enabled: FRAMEWORKS.filter((f) => f.defaultOn).map((f) => f.id),
   answers: {},
   section: 0,
@@ -20,7 +20,7 @@ let state = load() || defaultState();
 let animate = true;
 
 function load() {
-  try { const s = JSON.parse(localStorage.getItem(STORE)); if (!s || !s.answers) return null; if (s.answers.uc_type) s.answers.uc_type = normType(s.answers.uc_type); if (typeof s.answers.synthetic === "string") s.answers.synthetic = [s.answers.synthetic]; return { ...defaultState(), ...s, view: "home" }; } catch { return null; }
+  try { const s = JSON.parse(localStorage.getItem(STORE)); if (!s || !s.answers) return null; if (s.answers.uc_type) s.answers.uc_type = normType(s.answers.uc_type); if (typeof s.answers.synthetic === "string") s.answers.synthetic = [s.answers.synthetic]; return { ...defaultState(), ...s, view: s.view === "result" ? "result" : "intake" }; } catch { return null; }
 }
 function save() {
   try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* storage unavailable */ }
@@ -579,7 +579,7 @@ app.addEventListener("click", (e) => {
   if (!el) return;
   const act = el.dataset.act;
   switch (act) {
-    case "home": return go("home");
+    case "home": location.href = "./"; return;
     case "new": state = { ...defaultState() }; return go("setup");
     case "resume": return go("intake");
     case "example": {
@@ -638,7 +638,7 @@ app.addEventListener("click", (e) => {
   }
 });
 
-document.querySelector(".brand").addEventListener("click", (e) => { e.preventDefault(); go("home"); });
+// The brand links back to the landing page (index.html).
 
 app.addEventListener("input", (e) => {
   const el = e.target.closest("[data-q]");
@@ -658,4 +658,13 @@ function render(opts = {}) {
   if (state.view === "home") initHome();
 }
 
+// Deep links from the landing page: ?start, ?example=<id>, ?quick=<base64 answers>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.has("start")) state = { ...defaultState(), view: "setup" };
+  const ex = q.get("example") && EXAMPLES.find((x) => x.id === q.get("example"));
+  if (ex) state = { ...state, view: "result", answers: structuredClone(ex.answers), tab: "overview", section: 0 };
+  if (q.get("quick")) { try { state = { ...defaultState(), view: "setup", answers: JSON.parse(decodeURIComponent(escape(atob(q.get("quick"))))) }; } catch { /* ignore */ } }
+  if ([...q.keys()].length) history.replaceState(null, "", location.pathname);
+})();
 render();

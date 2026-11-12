@@ -3,29 +3,102 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MayAI · May I Use This AI Tool?</title>
-  <meta name="description" content="A free AI use-case intake: which AI regulations and frameworks apply, the risk tier, an intake decision and the controls to put in place." />
+  <title>MayAI · May I use this AI tool?</title>
+  <meta name="description" content="Check an AI use case against the regulations that apply. Get a clear answer, the legal basis and the controls to put in place." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <!-- To restore the previous design, change styles.css to styles-v1.css on the next line. -->
-  <link rel="stylesheet" href="assets/styles.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff5420'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11.5' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/preview.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11.5' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#" data-nav="home">
-      <span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="8"/><path d="M9 16.5l4.5 4.5L23 11.5"/></svg></span>
-      <span class="wordmark">May<b>AI</b></span>
-    </a>
-    <nav class="steps" id="steps" aria-label="Progress"></nav>
-    <span class="pill" title="This tool gives general information, not legal advice.">Not legal advice</span>
+  <header class="lnav">
+    <div class="lnav-in">
+      <a class="brand" href="#top">MayAI</a>
+      <nav><a href="#how">How it works</a><a href="#coverage">Coverage</a><a href="#try">Try it</a><a href="#examples">Examples</a></nav>
+      <a class="pill" href="app.html?start">Start</a>
+    </div>
   </header>
-  <main id="app" tabindex="-1"></main>
-  <footer class="footer">
-    <p>General information only, not legal advice; check current law with counsel before relying on it. Legal status checked November 2026.</p>
-    <p><a href="https://github.com/ac-ctrl-lab/ai-intake-check" target="_blank" rel="noopener">Source on GitHub</a></p>
+
+  <main id="top">
+    <!-- Hero -->
+    <section class="hero">
+      <p class="eyebrow fade-up">MayAI</p>
+      <h1 class="hero-title"><span class="line fade-up">May I?</span><span class="line blue fade-up d1">You may.</span></h1>
+      <p class="hero-sub fade-up d2">Check any AI use case against the regulations that apply where you operate. Get a clear answer, the legal basis and the controls to put in place.</p>
+      <div class="hero-ctas fade-up d3"><a class="pill big" href="app.html?start">Start an intake</a><a class="more" href="#how">See how it works</a></div>
+      <div class="shot-wrap"><div class="shot" id="shot"></div></div>
+    </section>
+
+    <!-- Pinned story -->
+    <section class="story" id="how">
+      <div class="story-track">
+        <div class="story-sticky">
+          <div class="story-copy">
+            <p class="eyebrow dim">How it works</p>
+            <ol class="steps" id="steps">
+              <li><h3>Describe.</h3><p>What the AI does, where it is used and who it affects. Only the questions that matter for your case appear.</p></li>
+              <li><h3>Check.</h3><p>Thirteen AI and data regulations are tested against your answers. Each one applies, may apply, or does not.</p></li>
+              <li><h3>Decide.</h3><p>Yes, yes with conditions, or no. Every condition names the law and the section it comes from.</p></li>
+            </ol>
+          </div>
+          <div class="screen" id="screen"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Word reveal -->
+    <section class="statement">
+      <p class="reveal-text" id="reveal">Every answer cites the law it comes from. The article, the section, and a link to the original text. No black box, and no guessing.</p>
+    </section>
+
+    <!-- Horizontal coverage -->
+    <section class="coverage" id="coverage">
+      <div class="cov-track" id="covTrack">
+        <div class="cov-sticky">
+          <div class="cov-head">
+            <h2>Thirteen regulations.<br /><span class="grey">Eleven jurisdictions. One answer.</span></h2>
+            <p>Regulations are checked automatically. Standards such as ISO/IEC 42001 and the NIST AI RMF apply when you choose them.</p>
+          </div>
+          <div class="cov-row" id="covRow"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick check -->
+    <section class="try" id="try">
+      <div class="wrap">
+        <h2 class="center">Try it in 20 seconds.</h2>
+        <p class="center sub">A first read from the same rules as the full intake.</p>
+        <div class="qc">
+          <div class="qc-form" id="qcForm"></div>
+          <div class="qc-out" id="qcOut"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Examples -->
+    <section class="examples" id="examples">
+      <div class="wrap">
+        <h2>See a review.</h2>
+        <div class="ex-grid" id="exGrid"></div>
+      </div>
+    </section>
+
+    <!-- Closer -->
+    <section class="closer">
+      <h2><span>May I?</span><span class="blue">You may.</span></h2>
+      <a class="pill big" href="app.html?start">Start an intake</a>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p>MayAI gives general information, not legal advice. Check current law with counsel before relying on it. Legal status checked November 2026.</p>
+      <p><a href="https://github.com/ac-ctrl-lab/ai-intake-check" target="_blank" rel="noopener">Source on GitHub</a></p>
+    </div>
   </footer>
-  <script type="module" src="src/app.js"></script>
+
+  <script type="module" src="src/preview.js"></script>
 </body>
 </html>
